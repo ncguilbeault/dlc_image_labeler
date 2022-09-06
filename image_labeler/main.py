@@ -32,14 +32,19 @@ class ImageLabel(QWidget):
         r1 = width / imageWidth
         r2 = height / imageHeight
         self.r = min(r1, r2)
-        x = (width + self.offset[0] / self.scale * self.r - imageWidth * self.r) / 2
-        y = (height + self.offset[1] / self.scale * self.r - imageHeight * self.r) / 2
-        painter.setTransform(QTransform().translate(x, y).scale(self.r * self.scale, self.r * self.scale))
+        self.x = (width + self.offset[0] / self.scale * self.r - imageWidth * self.r) / 2
+        self.y = (height + self.offset[1] / self.scale * self.r - imageHeight * self.r) / 2
+        painter.setTransform(QTransform().translate(self.x, self.y).scale(self.r * self.scale, self.r * self.scale))
         painter.drawImage(QPointF(0,0), self.image)
 
     def update_params(self, offset, scale):
         self.offset = offset
         self.scale = scale
+
+    # def mousePressEvent(self, event):
+    #     print(self.x, self.y)
+    #     print('here',event)
+    #     super(ImageLabel, self).mousePressEvent(event)
 
 class MainWindow(QMainWindow):
 
@@ -61,9 +66,9 @@ class MainWindow(QMainWindow):
 
         self.main_layout = QGridLayout()
         self.main_widget.setLayout(self.main_layout)
-        # self.main_layout.setVerticalSpacing(0)
-        # self.main_layout.setHorizontalSpacing(0)
-        # self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setVerticalSpacing(0)
+        self.main_layout.setHorizontalSpacing(0)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         self.gradient = np.linspace(0, 1, 256)
         self.config = None
@@ -71,8 +76,8 @@ class MainWindow(QMainWindow):
         self.frame_number = 0
 
         self.label_image = ImageLabel()
-        self.image = cv2.imread('test.png', cv2.IMREAD_UNCHANGED)
-        print(self.image.shape)
+        self.image = cv2.cvtColor(cv2.imread('test.png', cv2.IMREAD_UNCHANGED), cv2.COLOR_RGB2BGR).astype(np.uint8)
+        # print(self.image.shape)
         # cv2.imshow('img', self.image)
         self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
         self.scale = 1
@@ -156,7 +161,10 @@ class MainWindow(QMainWindow):
         prev_scale = self.scale
         self.scale *= 1.001 ** delta
         delta_scale = self.scale - prev_scale
-        self.offset += np.array([-(delta_scale / self.scale * self.width()), -(delta_scale / self.scale * self.height())], dtype = np.float64)
+        # self.offset += np.array([-delta_scale * self.label_image.width() / 2, -delta_scale * self.label_image.height() / 2], dtype = np.float64)
+        # self.offset += self.scale * self.offset
+        # self.offset +=
+        # self.offset = self.offset / self.scale * self.label_image.r / 2 
         self.label_image.update_params(offset = self.offset, scale = self.scale)
         self.update()
 
@@ -178,14 +186,27 @@ class MainWindow(QMainWindow):
             cmap = plt.get_cmap(self.config['colormap'])
             labels = self.config['bodyparts']
             if self.frame_number not in self.labelled_frames.keys():
-                self.labelled_frames[self.frame_number] = dict([[label, None] for label in labels])
+                self.labelled_frames[self.frame_number] = dict([[label, np.array([np.nan, np.nan])] for label in labels])
+            all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
+            if not np.isnan(all_coords).any():
+                self.labelled_frames[self.frame_number] = dict([[label, np.array([np.nan, np.nan])] for label in labels])
+                all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
             cmap_range = np.linspace(0, 255, len(labels)).astype(int)
-            color = cmap(cmap_range[0])
-            coords = (event.pos().x(), event.pos().y())
+            coords = np.array([(event.pos().x() - self.label_image.x) * (1 / self.label_image.r) * (1 / self.scale), (event.pos().y() - self.label_image.y - self.menubar.height()) * (1 / self.label_image.r) * (1 / self.scale)])
+            if (coords < 0).any() or coords[0] > self.image.shape[0] or coords[1] > self.image.shape[1]:
+                return
+            label_i = np.isnan(all_coords).all(axis=1).argmax()
+            self.labelled_frames[self.frame_number][labels[label_i]] = coords
             radius = self.config['dotsize']
-            self.image = self.label_image.copy()
-            self.image = cv2.circle(self.image, coords, radius, color, -1)
-            print(self.labelled_frames)
+            image = self.image.copy()
+            for label_i, label in enumerate(self.labelled_frames[self.frame_number].keys()):
+                coords = self.labelled_frames[self.frame_number][label]
+                if not np.isnan(coords).any():
+                    color = [val*255 for val in cmap(cmap_range[label_i])[:3]]
+                    image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
+            
+            self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
+            self.update()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
