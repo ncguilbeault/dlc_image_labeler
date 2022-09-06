@@ -67,9 +67,14 @@ class MainWindow(QMainWindow):
 
         self.gradient = np.linspace(0, 1, 256)
         self.config = None
+        self.labelled_frames = {}
+        self.frame_number = 0
 
         self.label_image = ImageLabel()
-        self.label_image.set_image(QImage('test.png'))
+        self.image = cv2.imread('test.png', cv2.IMREAD_UNCHANGED)
+        print(self.image.shape)
+        # cv2.imshow('img', self.image)
+        self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
         self.scale = 1
         self.offset = np.array([0, 0], dtype = np.float64)
         self.prev_pos = None
@@ -95,6 +100,10 @@ class MainWindow(QMainWindow):
         self.set_dlc_config_action = QAction('&Set DLC Config', self)
         self.set_dlc_config_action.triggered.connect(self.trigger_set_dlc_config)
         self.options_menu.addAction(self.set_dlc_config_action)
+
+        # self.show_text_labels_action = QAction('&Show Text Labels', self)
+        # self.show_text_labels_action.triggered.connect(self.trigger_show_text_labels)
+        # self.options_menu.addAction(self.show_text_labels_action)
 
         # self.load_labels_action = QAction('&Load Labels', self)
         # self.load_labels_action.setShortcut('Ctrl+L')
@@ -136,10 +145,10 @@ class MainWindow(QMainWindow):
 
     def update_frame(self):
         if self.video_path is not None:
-            frame_number = int(self.frame_window_slider.sliderPosition())
-            success, image = get_video_frame(self.video_path, frame_number, False)
+            self.frame_number = int(self.frame_window_slider.sliderPosition())
+            success, self.image = get_video_frame(self.video_path, self.frame_number, False)
             if success:
-                self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
+                self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
 
     def wheelEvent(self, event):
 
@@ -156,17 +165,27 @@ class MainWindow(QMainWindow):
             if self.prev_pos is None:
                 self.prev_pos = (event.x(), event.y())
         if event.button() == Qt.RightButton:
-            if self.config is not None:
-                cmap = plt.get_cmap(self.config['colormap'])
-                labels = self.config['bodyparts']
-                cmap_range = np.linspace(0, 255, len(labels)).astype(int)
-                color = cmap
-                coords = event.pos()
-                radius = self.config['dotsize']
-                image = self.label_image.image.copy()
-                image = cv2.circle()
-            else:
-                print('No config file selected')
+            if self.config is None:
+                self.config = {
+                    'bodyparts' : [
+                        'test1',
+                        'test2'
+                    ],
+                    'colormap' : 'rainbow',
+                    'dotsize' : 3
+                }
+
+            cmap = plt.get_cmap(self.config['colormap'])
+            labels = self.config['bodyparts']
+            if self.frame_number not in self.labelled_frames.keys():
+                self.labelled_frames[self.frame_number] = dict([[label, None] for label in labels])
+            cmap_range = np.linspace(0, 255, len(labels)).astype(int)
+            color = cmap(cmap_range[0])
+            coords = (event.pos().x(), event.pos().y())
+            radius = self.config['dotsize']
+            self.image = self.label_image.copy()
+            self.image = cv2.circle(self.image, coords, radius, color, -1)
+            print(self.labelled_frames)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
