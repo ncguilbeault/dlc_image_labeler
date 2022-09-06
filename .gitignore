@@ -1,5 +1,18 @@
-# Created by https://www.toptal.com/developers/gitignore/api/video,images,python,venv,visualstudiocode
-# Edit at https://www.toptal.com/developers/gitignore?templates=video,images,python,venv,visualstudiocode
+# Created by https://www.toptal.com/developers/gitignore/api/venv,python,visualstudiocode,video,images,data
+# Edit at https://www.toptal.com/developers/gitignore?templates=venv,python,visualstudiocode,video,images,data
+
+### Data ###
+*.csv
+*.dat
+*.efx
+*.gbr
+*.key
+*.pps
+*.ppt
+*.pptx
+*.sdf
+*.vcf
+*.xml
 
 ### Images ###
 # JPEG
@@ -283,4 +296,4 @@ pip-selfcheck.json
 # Ignore code-workspaces
 *.code-workspace
 
-# End of https://www.toptal.com/developers/gitignore/api/video,images,python,venv,visualstudiocode
+# End of https://www.toptal.com/developers/gitignore/api/venv,python,visualstudiocode,video,images,data

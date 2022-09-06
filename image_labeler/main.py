@@ -4,8 +4,9 @@ from PyQt5.QtGui import *
 
 import sys
 from utils import *
-
 import matplotlib.pyplot as plt
+from pathlib import Path
+import csv
 
 class ImageLabel(QWidget):
     def __init__(self, parent = None):
@@ -74,12 +75,15 @@ class MainWindow(QMainWindow):
         self.config = None
         self.labelled_frames = {}
         self.frame_number = 0
+        self.show_text_labels = False
+        self.save_directory = Path(__file__).parent.parent.resolve()
 
         self.label_image = ImageLabel()
         self.image = cv2.cvtColor(cv2.imread('test.png', cv2.IMREAD_UNCHANGED), cv2.COLOR_RGB2BGR).astype(np.uint8)
         # print(self.image.shape)
         # cv2.imshow('img', self.image)
-        self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
+        # self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
+        self.update_image()
         self.scale = 1
         self.offset = np.array([0, 0], dtype = np.float64)
         self.prev_pos = None
@@ -88,7 +92,7 @@ class MainWindow(QMainWindow):
         self.frame_window_slider.resize(self.size())
         self.frame_window_slider.setTickInterval(0)
         self.frame_window_slider.setSingleStep(0)
-        self.frame_window_slider.sliderMoved.connect(self.update_frame)
+        self.frame_window_slider.sliderMoved.connect(self.update_frame_pos)
         self.video_path = None
 
         self.main_layout.addWidget(self.label_image, 0, 0, 1, 0)
@@ -106,21 +110,21 @@ class MainWindow(QMainWindow):
         self.set_dlc_config_action.triggered.connect(self.trigger_set_dlc_config)
         self.options_menu.addAction(self.set_dlc_config_action)
 
-        # self.show_text_labels_action = QAction('&Show Text Labels', self)
-        # self.show_text_labels_action.triggered.connect(self.trigger_show_text_labels)
-        # self.options_menu.addAction(self.show_text_labels_action)
+        self.show_text_labels_action = QAction('&Show Text Labels', self)
+        self.show_text_labels_action.triggered.connect(self.trigger_show_text_labels)
+        self.options_menu.addAction(self.show_text_labels_action)
 
-        # self.load_labels_action = QAction('&Load Labels', self)
-        # self.load_labels_action.setShortcut('Ctrl+L')
-        # self.load_labels_action.setStatusTip('Load Labels')
-        # self.load_labels_action.triggered.connect(self.trigger_load_labels)
-        # self.options_menu.addAction(self.load_labels_action)
+        self.set_save_directory_action = QAction('&Set Save Directory', self)
+        self.set_save_directory_action.triggered.connect(self.trigger_set_save_directory)
+        self.options_menu.addAction(self.set_save_directory_action)
 
-        # self.save_labels_action = QAction('&Save Labels', self)
-        # self.save_labels_action.setShortcut('Ctrl+S')
-        # self.save_labels_action.setStatusTip('Save Labels')
-        # self.save_labels_action.triggered.connect(self.trigger_save_labels)
-        # self.options_menu.addAction(self.save_labels_action)
+        self.load_labels_action = QAction('&Load Labels', self)
+        self.load_labels_action.triggered.connect(self.trigger_load_labels)
+        self.options_menu.addAction(self.load_labels_action)
+
+        self.save_labels_action = QAction('&Save Labels', self)
+        self.save_labels_action.triggered.connect(self.trigger_save_labels)
+        self.options_menu.addAction(self.save_labels_action)
 
         # self.remove_frame_labels_action = QAction('&Remove Frame Labels', self)
         # self.remove_frame_labels_action.setShortcut('Ctrl+R')
@@ -135,25 +139,30 @@ class MainWindow(QMainWindow):
         # self.options_menu.addAction(self.remove_all_labels_action)
 
     def trigger_open_video(self):
+        self.config = None
+        self.labelled_frames = {}
         self.video_path = QFileDialog.getOpenFileName(self,"Open Video File", "","Video Files (*.avi; *.mp4; *.mov)", options=QFileDialog.Options())[0]
         if self.video_path:
             print(f'Selected video: {self.video_path}')
-            success, image = get_video_frame(self.video_path, 0, False)
+            success, self.image = get_video_frame(self.video_path, 0, False)
             if success:
-                self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
+                # self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
                 self.n_frames = get_total_frame_number_from_video(self.video_path)
-                self.frame_window_slider.setMaximum(self.n_frames)
+                self.frame_window_slider.setMaximum(self.n_frames - 1)
+                self.update_frame_pos()
             else:
                 print(f'Failed to load frame.')
         else:
             print(f'Failed to load video.')
 
-    def update_frame(self):
+    def update_frame_pos(self):
         if self.video_path is not None:
             self.frame_number = int(self.frame_window_slider.sliderPosition())
             success, self.image = get_video_frame(self.video_path, self.frame_number, False)
             if success:
-                self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
+                # self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
+                # if self.frame_number not in self.labelled_frames.keys():
+                self.update_image()
 
     def wheelEvent(self, event):
 
@@ -168,10 +177,32 @@ class MainWindow(QMainWindow):
         self.label_image.update_params(offset = self.offset, scale = self.scale)
         self.update()
 
+    def update_image(self):
+        image = self.image.copy()
+        if self.config is not None and self.check_labels_in_frame():
+            labels = self.config['bodyparts']
+            cmap = plt.get_cmap(self.config['colormap'])
+            cmap_range = np.linspace(0, 255, len(labels)).astype(int)
+            radius = self.config['dotsize']
+
+            if self.frame_number in self.labelled_frames.keys():
+                for label_i, label in enumerate(self.labelled_frames[self.frame_number].keys()):
+                    coords = self.labelled_frames[self.frame_number][label]
+                    if not np.isnan(coords).any():
+                        color = [val*255 for val in cmap(cmap_range[label_i])[:3]]
+                        image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
+                        if self.show_text_labels:
+                            image = cv2.putText(image, label, [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+            
+        self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
+        self.update()
+
     def mousePressEvent(self, event):
+
         if event.button() == Qt.LeftButton:
             if self.prev_pos is None:
                 self.prev_pos = (event.x(), event.y())
+
         if event.button() == Qt.RightButton:
             if self.config is None:
                 self.config = {
@@ -180,33 +211,35 @@ class MainWindow(QMainWindow):
                         'test2'
                     ],
                     'colormap' : 'rainbow',
-                    'dotsize' : 3
+                    'dotsize' : 1,
+                    'scorer': 'nick'
                 }
 
-            cmap = plt.get_cmap(self.config['colormap'])
             labels = self.config['bodyparts']
             if self.frame_number not in self.labelled_frames.keys():
                 self.labelled_frames[self.frame_number] = dict([[label, np.array([np.nan, np.nan])] for label in labels])
+
             all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
             if not np.isnan(all_coords).any():
                 self.labelled_frames[self.frame_number] = dict([[label, np.array([np.nan, np.nan])] for label in labels])
                 all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
-            cmap_range = np.linspace(0, 255, len(labels)).astype(int)
+
             coords = np.array([(event.pos().x() - self.label_image.x) * (1 / self.label_image.r) * (1 / self.scale), (event.pos().y() - self.label_image.y - self.menubar.height()) * (1 / self.label_image.r) * (1 / self.scale)])
             if (coords < 0).any() or coords[0] > self.image.shape[0] or coords[1] > self.image.shape[1]:
                 return
+
             label_i = np.isnan(all_coords).all(axis=1).argmax()
             self.labelled_frames[self.frame_number][labels[label_i]] = coords
-            radius = self.config['dotsize']
-            image = self.image.copy()
-            for label_i, label in enumerate(self.labelled_frames[self.frame_number].keys()):
-                coords = self.labelled_frames[self.frame_number][label]
-                if not np.isnan(coords).any():
-                    color = [val*255 for val in cmap(cmap_range[label_i])[:3]]
-                    image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
             
-            self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
-            self.update()
+            self.update_image()
+
+    def check_labels_in_frame(self):
+        if self.frame_number not in self.labelled_frames.keys():
+            return False
+        all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
+        if np.isnan(all_coords).all():
+            return False
+        return True
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -225,12 +258,108 @@ class MainWindow(QMainWindow):
             self.update()
 
     def trigger_set_dlc_config(self):
+        self.config = None
+        self.labelled_frames = {}
+        self.update_frame_pos()
         self.dlc_config_file = QFileDialog.getOpenFileName(self,"Open DLC Config File", "","Config Files (*.yaml)", options=QFileDialog.Options())[0]
         if self.dlc_config_file:
             print(f'Config file: {self.dlc_config_file}')
             self.config = load_yaml(self.dlc_config_file)
         else:
             print(f'Failed to load config.')
+
+    def trigger_show_text_labels(self):
+        if self.config is not None:
+            self.show_text_labels = self.show_text_labels == False
+            self.update_frame_pos()
+        else:
+            print(f'Failed to show text labels because no config file loaded.')
+
+    def trigger_save_labels(self):
+        if self.config is not None and len(self.labelled_frames.keys()) > 0:
+            zero_pad_image_name = len(str(max(list(self.labelled_frames.keys()))))
+            csv_filename = f'{self.save_directory}\\CollectedData_nick.csv'
+            scorer = self.config['scorer']
+            labels = self.config['bodyparts']
+            with open(csv_filename, 'w', newline='') as f:
+                writer = csv.writer(f, delimiter=',')
+                writer_data = ['scorer', '', ''] + [scorer] * len(labels) * 2
+                writer.writerow(writer_data)
+                writer_data = ['bodyparts', '', ''] 
+                for label_txt in labels:
+                    writer_data += [label_txt] * 2
+                writer.writerow(writer_data)
+                writer_data = ['coords', '', '']
+                for label_txt in labels:
+                    writer_data += ['x', 'y']
+                writer.writerow(writer_data)
+                video_stem = Path(self.video_path).stem
+                for labelled_frame_key in self.labelled_frames.keys():
+                    success, frame = get_video_frame(self.video_path, labelled_frame_key, False)
+                    if success:
+                        image_path = f'{self.save_directory}\\img{str(labelled_frame_key).zfill(zero_pad_image_name)}.png'
+                        image_name = Path(image_path).name
+                        writer_data = ['labeled-data', video_stem, image_name]
+                        for label_txt in labels:
+                            coord = self.labelled_frames[labelled_frame_key][label_txt]
+                            writer_data += list(coord)
+                        writer.writerow(writer_data)
+                        cv2.imwrite(image_path, frame)
+            # print(self.labelled_frames)
+            # pass
+            print(f'Saved labels: {csv_filename}')
+        else:
+            print('Failed to save labels because either no config file loaded or no labeled frames.')
+
+    def trigger_set_save_directory(self):
+        self.save_directory = QFileDialog.getExistingDirectory(self,"Select Save Directory")
+        if self.save_directory == '':
+            self.save_directory = Path(__file__).parent.parent.resolve()
+            print(f'Failed to set save directory. Using default directory: {self.save_directory}')
+        else:
+            print(f'Save directory: {self.save_directory}')
+
+    def trigger_load_labels(self):
+        # self.config = None
+        if len(self.labelled_frames.keys()) != 0:
+            print(f'Failed to load labels because labels are already loaded. Save existing labels and then remove all labels before loading new ones.')
+            return
+        self.labelled_frames = {}
+        if self.video_path is None:
+            print(f'Failed to load labels because no video has been selected.')
+            return
+        labels_path = QFileDialog.getOpenFileName(self,"Load Labels File", "","Labels Files (*.csv)", options=QFileDialog.Options())[0]
+        if labels_path:
+            video_stem = Path(self.video_path).stem
+            with open(labels_path, 'r') as f:
+                data = [row for row in csv.reader(f)]
+            if data[3][1] != video_stem:
+                print('Failed to load labels because labels are for a different video.')
+                return
+            print(f'Labels file: {labels_path}')
+            print(data)
+            for frame_data in data[3:]:
+                frame_number = int(frame_data[2].split('.')[0][3:])
+                new_label_col_idxs = np.arange(3, len(frame_data), 2)
+                for new_label_col_i in new_label_col_idxs:
+                    label = data[1][new_label_col_i]
+                    x = frame_data[new_label_col_i]
+                    y = frame_data[new_label_col_i + 1]
+                    self.labelled_frames[frame_number] = {
+                        label: np.array([x, y], dtype=float)
+                    }
+            self.update_frame_pos()
+            # print(f'Labels path: {self.labels_path}')
+            # success, self.image = get_video_frame(self.video_path, 0, False)
+            # if success:
+            #     # self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
+            #     self.n_frames = get_total_frame_number_from_video(self.video_path)
+            #     self.frame_window_slider.setMaximum(self.n_frames - 1)
+            #     self.update_frame_pos()
+            # else:
+            #     print(f'Failed to load frame.')
+        else:
+            print(f'Failed to load video.')
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
