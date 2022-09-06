@@ -184,7 +184,7 @@ class MainWindow(QMainWindow):
             self.label_image.update_params(offset = self.offset, scale = self.scale)
             self.update()
 
-    def set_dlc_config_action(self):
+    def trigger_set_dlc_config(self):
         self.dlc_config_file = QFileDialog.getOpenFileName(self,"Open DLC Config File", "","Config Files (*.yaml)", options=QFileDialog.Options())[0]
         if self.dlc_config_file:
             print(f'Config file: {self.dlc_config_file}')
