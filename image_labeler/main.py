@@ -97,40 +97,56 @@ class MainWindow(QMainWindow):
 
         self.main_layout.addWidget(self.label_image, 0, 0, 1, 0)
         self.main_layout.addWidget(self.frame_window_slider, 1, 0, 1, 0)
+        self.setChildrenFocusPolicy(Qt.NoFocus)
         self.show()
 
     def add_options_to_menubar(self):
         self.options_menu = self.menubar.addMenu('&Options')
 
         self.open_video_action = QAction('&Open Video', self)
+        self.open_video_action.setShortcut('Ctrl+O')
         self.open_video_action.triggered.connect(self.trigger_open_video)
         self.options_menu.addAction(self.open_video_action)
 
         self.set_dlc_config_action = QAction('&Set DLC Config', self)
+        self.set_dlc_config_action.setShortcut('Ctrl+D')
         self.set_dlc_config_action.triggered.connect(self.trigger_set_dlc_config)
         self.options_menu.addAction(self.set_dlc_config_action)
 
         self.show_text_labels_action = QAction('&Show Text Labels', self)
+        self.show_text_labels_action.setShortcut('Ctrl+T')
         self.show_text_labels_action.triggered.connect(self.trigger_show_text_labels)
         self.options_menu.addAction(self.show_text_labels_action)
 
         self.set_save_directory_action = QAction('&Set Save Directory', self)
+        self.set_save_directory_action.setShortcut('Ctrl+P')
         self.set_save_directory_action.triggered.connect(self.trigger_set_save_directory)
         self.options_menu.addAction(self.set_save_directory_action)
 
         self.load_labels_action = QAction('&Load Labels', self)
+        self.load_labels_action.setShortcut('Ctrl+L')
         self.load_labels_action.triggered.connect(self.trigger_load_labels)
         self.options_menu.addAction(self.load_labels_action)
 
         self.save_labels_action = QAction('&Save Labels', self)
+        self.save_labels_action.setShortcut('Ctrl+S')
         self.save_labels_action.triggered.connect(self.trigger_save_labels)
         self.options_menu.addAction(self.save_labels_action)
 
-        # self.remove_frame_labels_action = QAction('&Remove Frame Labels', self)
-        # self.remove_frame_labels_action.setShortcut('Ctrl+R')
-        # self.remove_frame_labels_action.setStatusTip('Remove Frame Labels')
-        # self.remove_frame_labels_action.triggered.connect(self.trigger_remove_labels)
-        # self.options_menu.addAction(self.remove_frame_labels_action)
+        self.remove_labels_action = QAction('&Remove Labels', self)
+        self.remove_labels_action.setShortcut('Ctrl+R')
+        self.remove_labels_action.triggered.connect(self.trigger_remove_labels)
+        self.options_menu.addAction(self.remove_labels_action)
+
+        self.remove_all_labels_action = QAction('&Remove All Labels', self)
+        self.remove_all_labels_action.setShortcut('Ctrl+Shift+R')
+        self.remove_all_labels_action.triggered.connect(self.trigger_remove_all_labels)
+        self.options_menu.addAction(self.remove_all_labels_action)
+
+        self.undo_last_label = QAction('&Undo Last Label', self)
+        self.undo_last_label.setShortcut('Ctrl+Z')
+        self.undo_last_label.triggered.connect(self.trigger_undo_last_label)
+        self.options_menu.addAction(self.undo_last_label)
 
         # self.remove_all_labels_action = QAction('&Remove All Labels', self)
         # self.remove_all_labels_action.setShortcut('Ctrl+R')
@@ -320,7 +336,6 @@ class MainWindow(QMainWindow):
             print(f'Save directory: {self.save_directory}')
 
     def trigger_load_labels(self):
-        # self.config = None
         if len(self.labelled_frames.keys()) != 0:
             print(f'Failed to load labels because labels are already loaded. Save existing labels and then remove all labels before loading new ones.')
             return
@@ -337,10 +352,9 @@ class MainWindow(QMainWindow):
                 print('Failed to load labels because labels are for a different video.')
                 return
             print(f'Labels file: {labels_path}')
-            print(data)
+            new_label_col_idxs = np.arange(3, len(data[0]), 2)
             for frame_data in data[3:]:
                 frame_number = int(frame_data[2].split('.')[0][3:])
-                new_label_col_idxs = np.arange(3, len(frame_data), 2)
                 for new_label_col_i in new_label_col_idxs:
                     label = data[1][new_label_col_i]
                     x = frame_data[new_label_col_i]
@@ -348,18 +362,76 @@ class MainWindow(QMainWindow):
                     self.labelled_frames[frame_number] = {
                         label: np.array([x, y], dtype=float)
                     }
+            body_parts = data[1][new_label_col_idxs]
+            colormap = 'rainbow'
+            dotsize = 1
+            scorer = data[0][3]
+            if self.config is None:
+                self.config = {
+                    'bodyparts' : body_parts,
+                    'colormap' : colormap,
+                    'dotsize' : dotsize,
+                    'scorer': scorer
+                }
             self.update_frame_pos()
-            # print(f'Labels path: {self.labels_path}')
-            # success, self.image = get_video_frame(self.video_path, 0, False)
-            # if success:
-            #     # self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
-            #     self.n_frames = get_total_frame_number_from_video(self.video_path)
-            #     self.frame_window_slider.setMaximum(self.n_frames - 1)
-            #     self.update_frame_pos()
-            # else:
-            #     print(f'Failed to load frame.')
         else:
             print(f'Failed to load video.')
+
+    def trigger_remove_labels(self):
+        if self.frame_number in self.labelled_frames.keys():
+            del(self.labelled_frames[self.frame_number])
+            self.update_image()
+
+    def trigger_remove_all_labels(self):
+        self.labelled_frames = {}
+        self.update_image()
+
+    def trigger_undo_last_label(self):
+        if self.check_labels_in_frame():
+            all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
+            if not np.isnan(all_coords).all():
+                labels = self.config['bodyparts']
+                label_i = np.isnan(all_coords).all(axis=1).argmax() - 1
+                self.labelled_frames[self.frame_number][labels[label_i]] = np.array([np.nan, np.nan])
+        self.update_image()
+
+    def setChildrenFocusPolicy(self, policy):
+        def recursiveSetChildFocusPolicy(parentQWidget):
+            for childQWidget in parentQWidget.findChildren(QWidget):
+                childQWidget.setFocusPolicy(policy)
+                recursiveSetChildFocusPolicy(childQWidget)
+        recursiveSetChildFocusPolicy(self)
+
+    def keyPressEvent(self, event):
+        # print(event.key())
+        if self.video_path is not None:
+            modifiers = QApplication.keyboardModifiers()
+            state_change = False
+            if event.key() == Qt.Key_Left:
+                state_change = True
+                self.frame_number -= 1
+                if (modifiers & Qt.ShiftModifier):
+                    self.frame_number -= 4
+            if event.key() == Qt.Key_Right:
+                state_change = True
+                self.frame_number += 1
+                if (modifiers & Qt.ShiftModifier):
+                    self.frame_number += 4
+            if state_change:
+                self.frame_window_slider.setSliderPosition(self.frame_number)
+                self.update_frame_pos()
+        # if event.key() == Qt.Key_Right and self.video_path is not None:
+        #     modifiers = QApplication.keyboardModifiers()
+        #     if (modifiers & Qt.ShiftModifier):
+        #         self.frame_number += 5
+        #     else:
+        #         self.frame_number += 1
+        #     self.frame_window_slider.setSliderPosition(self.frame_number)
+        #     self.update_frame_pos()
+        
+        # print(modifiers)
+        # if (modifiers & Qt.ControlModifier) and (modifiers & QtCore.Qt.ShiftModifier)
+        # QWidget.keyPressEvent(self, event)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
