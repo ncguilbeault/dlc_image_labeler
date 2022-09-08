@@ -324,40 +324,23 @@ class MainWindow(QMainWindow):
     def trigger_save_labels(self):
         if self.config is not None and len(self.labelled_frames.keys()) > 0:
             zero_pad_image_name = len(str(max(list(self.labelled_frames.keys()))))
-            csv_path = f'{self.save_directory}\\CollectedData_nick.csv'
             scorer = self.config['scorer']
             labels = self.config['bodyparts']
-            with open(csv_path, 'w', newline='') as f:
-                writer = csv.writer(f, delimiter=',')
-                writer_data = ['scorer', '', ''] + [scorer] * len(labels) * 2
-                writer.writerow(writer_data)
-                writer_data = ['bodyparts', '', ''] 
-                for label_txt in labels:
-                    writer_data += [label_txt] * 2
-                writer.writerow(writer_data)
-                writer_data = ['coords', '', '']
-                for label_txt in labels:
-                    writer_data += ['x', 'y']
-                writer.writerow(writer_data)
-                if self.video_path is not None:
-                    video_stem = Path(self.video_path).stem
-                else:
-                    video_stem = 'test'
-                for labelled_frame_key in self.labelled_frames.keys():
-                    success, frame = get_video_frame(self.video_path, labelled_frame_key, False)
-                    if success:
-                        image_path = f'{self.save_directory}\\img{str(labelled_frame_key).zfill(zero_pad_image_name)}.png'
-                        image_name = Path(image_path).name
-                        writer_data = ['labeled-data', video_stem, image_name]
-                        for label_txt in labels:
-                            coord = self.labelled_frames[labelled_frame_key][label_txt]
-                            writer_data += list(coord)
-                        writer.writerow(writer_data)
-                        cv2.imwrite(image_path, frame)
-            df = pd.read_csv(csv_path)
-            h5_path = csv_path.split('.csv')[0] + '.h5'
-            df.astype(str).to_hdf(h5_path, 'df_with_missing')
-            print(f'Saved labels: {csv_path} {h5_path}')
+            if self.video_path is not None:
+                video_stem = Path(self.video_path).stem
+            else:
+                video_stem = 'test'
+            columns = pd.MultiIndex.from_product([[scorer], labels, ["x", "y"],], names=["scorer", "bodyparts", "coords",],)
+            idx = pd.MultiIndex.from_tuples([("labeled-data", video_stem, f"img{str(labelled_frame_key).zfill(zero_pad_image_name)}.png") for labelled_frame_key in self.labelled_frames.keys()])
+            data = np.array([np.array([self.labelled_frames[key][label] for label in labels]).ravel() for key in self.labelled_frames.keys()], dtype=float)
+            df = pd.DataFrame(data, index = idx, columns = columns)
+            df.sort_index(inplace = True)
+            df.reindex(labels, axis = 1, level = df.columns.names.index('bodyparts'))
+            csv_path = f'{self.save_directory}\\CollectedData_nick.csv'
+            df.to_csv(csv_path)
+            hdf_path = csv_path.split('.csv')[0] + '.h5'
+            df.to_hdf(hdf_path, "df_with_missing")
+            print(f'Saved labels: {csv_path} {hdf_path}')
         else:
             print('Failed to save labels because either no config file loaded or no labeled frames.')
 

@@ -52,3 +52,4 @@ def load_yaml(yaml_path):
     with open(yaml_path, 'r') as f:
         data = yaml.safe_load(f)
     return data
+
