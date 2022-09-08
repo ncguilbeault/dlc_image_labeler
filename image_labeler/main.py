@@ -198,6 +198,7 @@ class MainWindow(QMainWindow):
             if success:
                 self.n_frames = get_total_frame_number_from_video(self.video_path)
                 self.frame_window_slider.setMaximum(self.n_frames - 1)
+                self.window_level_adjuster.reset_histogram_range()
                 self.update_frame_pos()
             else:
                 print(f'Failed to load frame.')
