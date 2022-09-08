@@ -67,12 +67,14 @@ class WindowLevelAdjuster(QMainWindow):
         self.update_window_level.emit(hist.getLevels())
 
     def reset_histogram_range(self):
-        self.image_view.setImage(self.image, autoRange=False, autoLevels=False)
+        self.image_view.setImage(self.image, autoRange=True, autoLevels=False)
         self.image_view.setLevels(0, 255)
         self.image_view.update()
 
     def get_processed_image(self, image):
         self.image = image.astype(np.float64).swapaxes(0, 1)
+        hist = self.image_view.getHistogramWidget()
+        hist.disableAutoHistogramRange()
         self.image_view.setImage(self.image, autoRange=True, autoLevels=False)
         self.image_view.getImageItem().render()
         new_image = image = self.image_view.getImageItem().qimage
