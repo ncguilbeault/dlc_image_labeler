@@ -13,6 +13,7 @@
 *.sdf
 *.vcf
 *.xml
+*.h5
 
 ### Images ###
 # JPEG

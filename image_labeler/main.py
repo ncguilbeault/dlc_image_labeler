@@ -339,7 +339,10 @@ class MainWindow(QMainWindow):
                 for label_txt in labels:
                     writer_data += ['x', 'y']
                 writer.writerow(writer_data)
-                video_stem = Path(self.video_path).stem
+                if self.video_path is not None:
+                    video_stem = Path(self.video_path).stem
+                else:
+                    video_stem = 'test'
                 for labelled_frame_key in self.labelled_frames.keys():
                     success, frame = get_video_frame(self.video_path, labelled_frame_key, False)
                     if success:
@@ -351,11 +354,9 @@ class MainWindow(QMainWindow):
                             writer_data += list(coord)
                         writer.writerow(writer_data)
                         cv2.imwrite(image_path, frame)
-            # print(self.labelled_frames)
-            # pass
             df = pd.read_csv(csv_path)
             h5_path = csv_path.split('.csv')[0] + '.h5'
-            df.to_hdf(h5_path)
+            df.astype(str).to_hdf(h5_path, 'df_with_missing')
             print(f'Saved labels: {csv_path} {h5_path}')
         else:
             print('Failed to save labels because either no config file loaded or no labeled frames.')
