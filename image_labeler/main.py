@@ -8,6 +8,7 @@ from utils import *
 import matplotlib.pyplot as plt
 from pathlib import Path
 import csv
+import pandas as pd
 
 class ImageLabel(QWidget):
     def __init__(self, parent = None):
@@ -323,10 +324,10 @@ class MainWindow(QMainWindow):
     def trigger_save_labels(self):
         if self.config is not None and len(self.labelled_frames.keys()) > 0:
             zero_pad_image_name = len(str(max(list(self.labelled_frames.keys()))))
-            csv_filename = f'{self.save_directory}\\CollectedData_nick.csv'
+            csv_path = f'{self.save_directory}\\CollectedData_nick.csv'
             scorer = self.config['scorer']
             labels = self.config['bodyparts']
-            with open(csv_filename, 'w', newline='') as f:
+            with open(csv_path, 'w', newline='') as f:
                 writer = csv.writer(f, delimiter=',')
                 writer_data = ['scorer', '', ''] + [scorer] * len(labels) * 2
                 writer.writerow(writer_data)
@@ -352,7 +353,10 @@ class MainWindow(QMainWindow):
                         cv2.imwrite(image_path, frame)
             # print(self.labelled_frames)
             # pass
-            print(f'Saved labels: {csv_filename}')
+            df = pd.read_csv(csv_path)
+            h5_path = csv_path.split('.csv')[0] + '.h5'
+            df.to_hdf(h5_path)
+            print(f'Saved labels: {csv_path} {h5_path}')
         else:
             print('Failed to save labels because either no config file loaded or no labeled frames.')
 
