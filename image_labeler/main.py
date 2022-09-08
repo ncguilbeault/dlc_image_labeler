@@ -340,6 +340,11 @@ class MainWindow(QMainWindow):
             df.to_csv(csv_path)
             hdf_path = csv_path.split('.csv')[0] + '.h5'
             df.to_hdf(hdf_path, "df_with_missing")
+            for labelled_frame_key in self.labelled_frames:
+                success, frame = get_video_frame(self.video_path, labelled_frame_key, False)
+                if success:
+                    image_path = f'{self.save_directory}\\img{str(labelled_frame_key).zfill(zero_pad_image_name)}.png'
+                    cv2.imwrite(image_path, frame)
             print(f'Saved labels: {csv_path} {hdf_path}')
         else:
             print('Failed to save labels because either no config file loaded or no labeled frames.')
