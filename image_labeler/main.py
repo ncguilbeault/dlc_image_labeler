@@ -327,10 +327,11 @@ class MainWindow(QMainWindow):
                 video_stem = Path(self.video_path).stem
             else:
                 video_stem = 'test'
-            proceed = QMessageBox.Cancel
             if video_stem != Path(self.save_directory).stem:
                 message = self.show_message("Name of video is different from name of folder which can lead to problems with DLC. Do you wish to proceed anyways?")
                 proceed = message.exec()
+            else:
+                proceed = QMessageBox.Ok
             if proceed != QMessageBox.Ok:
                 print('User cancelled saving labels.')
                 return
