@@ -50,7 +50,7 @@ class WindowLevelAdjuster(QMainWindow):
     def __init__(self, image, parent=None):
         super().__init__(parent)
         self.image = image.astype(np.float64).swapaxes(0, 1)
-        self.image_view = pg.image(self.image)
+        self.image_view = pg.image(self.image, autoRange=True)
         self.image_view.getHistogramWidget().sigLevelsChanged.connect(self.sig_levels_changed)
         self.image_view.setLevels(0, 255)
         self.widget = QWidget()
@@ -72,7 +72,7 @@ class WindowLevelAdjuster(QMainWindow):
 
     def get_processed_image(self, image):
         self.image = image.astype(np.float64).swapaxes(0, 1)
-        self.image_view.setImage(self.image, autoRange=False, autoLevels=False)
+        self.image_view.setImage(self.image, autoRange=True, autoLevels=False)
         self.image_view.getImageItem().render()
         new_image = image = self.image_view.getImageItem().qimage
         return new_image.data
