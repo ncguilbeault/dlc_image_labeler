@@ -323,13 +323,20 @@ class MainWindow(QMainWindow):
 
     def trigger_save_labels(self):
         if self.config is not None and len(self.labelled_frames.keys()) > 0:
-            zero_pad_image_name = len(str(max(list(self.labelled_frames.keys()))))
-            scorer = self.config['scorer']
-            labels = self.config['bodyparts']
             if self.video_path is not None:
                 video_stem = Path(self.video_path).stem
             else:
                 video_stem = 'test'
+            proceed = QMessageBox.Cancel
+            if video_stem != Path(self.save_directory).stem:
+                message = self.show_message("Name of video is different from name of folder which can lead to problems with DLC. Do you wish to proceed anyways?")
+                proceed = message.exec()
+            if proceed != QMessageBox.Ok:
+                print('User cancelled saving labels.')
+                return
+            zero_pad_image_name = len(str(max(list(self.labelled_frames.keys()))))
+            scorer = self.config['scorer']
+            labels = self.config['bodyparts']
             columns = pd.MultiIndex.from_product([[scorer], labels, ["x", "y"],], names=["scorer", "bodyparts", "coords",],)
             idx = pd.MultiIndex.from_tuples([("labeled-data", video_stem, f"img{str(labelled_frame_key).zfill(zero_pad_image_name)}.png") for labelled_frame_key in self.labelled_frames.keys()])
             data = np.array([np.array([self.labelled_frames[key][label] for label in labels]).ravel() for key in self.labelled_frames.keys()], dtype=float)
@@ -462,6 +469,12 @@ class MainWindow(QMainWindow):
         if self.window_level_adjuster is not None:
             image = self.window_level_adjuster.get_processed_image(image)
         return image
+
+    def show_message(self, message):
+        message_box = QMessageBox()
+        message_box.setText(message)
+        message_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        return message_box
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
