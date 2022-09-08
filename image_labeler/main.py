@@ -189,7 +189,6 @@ class MainWindow(QMainWindow):
         self.options_menu.addAction(self.adjust_window_level)
 
     def trigger_open_video(self):
-        self.config = None
         self.labelled_frames = {}
         self.video_path = QFileDialog.getOpenFileName(self,"Open Video File", "","Video Files (*.avi; *.mp4; *.mov)", options=QFileDialog.Options())[0]
         if self.video_path:
