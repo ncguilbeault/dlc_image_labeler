@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+import pyqtgraph as pg
 
 import sys
 from utils import *
@@ -42,10 +43,39 @@ class ImageLabel(QWidget):
         self.offset = offset
         self.scale = scale
 
-    # def mousePressEvent(self, event):
-    #     print(self.x, self.y)
-    #     print('here',event)
-    #     super(ImageLabel, self).mousePressEvent(event)
+class WindowLevelAdjuster(QMainWindow):
+
+    update_window_level = pyqtSignal(object)
+
+    def __init__(self, image, parent=None):
+        super().__init__(parent)
+        self.image = image.astype(np.float64).swapaxes(0, 1)
+        self.image_view = pg.image(self.image)
+        self.image_view.getHistogramWidget().sigLevelsChanged.connect(self.sig_levels_changed)
+        self.image_view.setLevels(0, 255)
+        self.widget = QWidget()
+        self.layout = QGridLayout()
+        self.reset_button = QPushButton('Reset Histogram Range')
+        self.reset_button.clicked.connect(self.reset_histogram_range)
+        self.layout.addWidget(self.image_view, 0, 0)
+        self.layout.addWidget(self.reset_button, 1, 0)
+        self.widget.setLayout(self.layout)
+        self.setCentralWidget(self.widget)
+
+    def sig_levels_changed(self, hist):
+        self.update_window_level.emit(hist.getLevels())
+
+    def reset_histogram_range(self):
+        self.image_view.setImage(self.image, autoRange=False, autoLevels=False)
+        self.image_view.setLevels(0, 255)
+        self.image_view.update()
+
+    def get_processed_image(self, image):
+        self.image = image.astype(np.float64).swapaxes(0, 1)
+        self.image_view.setImage(self.image, autoRange=False, autoLevels=False)
+        self.image_view.getImageItem().render()
+        new_image = image = self.image_view.getImageItem().qimage
+        return new_image.data
 
 class MainWindow(QMainWindow):
 
@@ -56,6 +86,7 @@ class MainWindow(QMainWindow):
     def initUI(self):
         self.setWindowTitle("DLC Image Labeler")
         self.resize(800, 800)
+        self.window_level_adjuster = None
 
         self.main_widget = QWidget()
         self.setCentralWidget(self.main_widget)
@@ -77,16 +108,19 @@ class MainWindow(QMainWindow):
         self.frame_number = 0
         self.show_text_labels = False
         self.save_directory = Path(__file__).parent.parent.resolve()
+        
+        self.image_min = 0
+        self.image_max = 255
 
-        self.label_image = ImageLabel()
-        self.image = cv2.cvtColor(cv2.imread('test.png', cv2.IMREAD_UNCHANGED), cv2.COLOR_RGB2BGR).astype(np.uint8)
-        # print(self.image.shape)
-        # cv2.imshow('img', self.image)
-        # self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
+        self.label_image = ImageLabel(self)
+        self.image = cv2.cvtColor(cv2.imread('test.png', cv2.IMREAD_REDUCED_COLOR_8), cv2.COLOR_RGB2BGR).astype(np.uint8)
         self.update_image()
         self.scale = 1
         self.offset = np.array([0, 0], dtype = np.float64)
         self.prev_pos = None
+
+        self.window_level_adjuster = WindowLevelAdjuster(self.image, self)
+        self.window_level_adjuster.update_window_level.connect(self.update_window_level)
 
         self.frame_window_slider = QSlider(Qt.Horizontal, self.main_widget)
         self.frame_window_slider.resize(self.size())
@@ -148,11 +182,10 @@ class MainWindow(QMainWindow):
         self.undo_last_label.triggered.connect(self.trigger_undo_last_label)
         self.options_menu.addAction(self.undo_last_label)
 
-        # self.remove_all_labels_action = QAction('&Remove All Labels', self)
-        # self.remove_all_labels_action.setShortcut('Ctrl+R')
-        # self.remove_all_labels_action.setStatusTip('Remove All Labels')
-        # self.remove_all_labels_action.triggered.connect(self.trigger_remove_all_labels)
-        # self.options_menu.addAction(self.remove_all_labels_action)
+        self.adjust_window_level = QAction('&Adjust Window Level', self)
+        self.adjust_window_level.setShortcut('Ctrl+A')
+        self.adjust_window_level.triggered.connect(self.trigger_show_window_level)
+        self.options_menu.addAction(self.adjust_window_level)
 
     def trigger_open_video(self):
         self.config = None
@@ -162,7 +195,6 @@ class MainWindow(QMainWindow):
             print(f'Selected video: {self.video_path}')
             success, self.image = get_video_frame(self.video_path, 0, False)
             if success:
-                # self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
                 self.n_frames = get_total_frame_number_from_video(self.video_path)
                 self.frame_window_slider.setMaximum(self.n_frames - 1)
                 self.update_frame_pos()
@@ -176,8 +208,6 @@ class MainWindow(QMainWindow):
             self.frame_number = int(self.frame_window_slider.sliderPosition())
             success, self.image = get_video_frame(self.video_path, self.frame_number, False)
             if success:
-                # self.label_image.set_image(QImage(self.image.data, self.image.shape[1], self.image.shape[0], QImage.Format_RGB888))
-                # if self.frame_number not in self.labelled_frames.keys():
                 self.update_image()
 
     def wheelEvent(self, event):
@@ -186,15 +216,14 @@ class MainWindow(QMainWindow):
         prev_scale = self.scale
         self.scale *= 1.001 ** delta
         delta_scale = self.scale - prev_scale
-        # self.offset += np.array([-delta_scale * self.label_image.width() / 2, -delta_scale * self.label_image.height() / 2], dtype = np.float64)
-        # self.offset += self.scale * self.offset
-        # self.offset +=
-        # self.offset = self.offset / self.scale * self.label_image.r / 2 
         self.label_image.update_params(offset = self.offset, scale = self.scale)
         self.update()
 
     def update_image(self):
         image = self.image.copy()
+
+        image = self.adjust_image_with_window_level(image)
+
         if self.config is not None and self.check_labels_in_frame():
             labels = self.config['bodyparts']
             cmap = plt.get_cmap(self.config['colormap'])
@@ -209,7 +238,7 @@ class MainWindow(QMainWindow):
                         image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
                         if self.show_text_labels:
                             image = cv2.putText(image, label, [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
-            
+
         self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
         self.update()
 
@@ -403,7 +432,6 @@ class MainWindow(QMainWindow):
         recursiveSetChildFocusPolicy(self)
 
     def keyPressEvent(self, event):
-        # print(event.key())
         if self.video_path is not None:
             modifiers = QApplication.keyboardModifiers()
             state_change = False
@@ -420,18 +448,25 @@ class MainWindow(QMainWindow):
             if state_change:
                 self.frame_window_slider.setSliderPosition(self.frame_number)
                 self.update_frame_pos()
-        # if event.key() == Qt.Key_Right and self.video_path is not None:
-        #     modifiers = QApplication.keyboardModifiers()
-        #     if (modifiers & Qt.ShiftModifier):
-        #         self.frame_number += 5
-        #     else:
-        #         self.frame_number += 1
-        #     self.frame_window_slider.setSliderPosition(self.frame_number)
-        #     self.update_frame_pos()
-        
-        # print(modifiers)
-        # if (modifiers & Qt.ControlModifier) and (modifiers & QtCore.Qt.ShiftModifier)
-        # QWidget.keyPressEvent(self, event)
+
+    def trigger_show_window_level(self):
+        self.window_level_adjuster.show()
+
+    def update_window_level(self, window_range):
+        window_min, window_max = window_range
+        if window_min != self.image_min and window_min >= 0 and window_min <= 255:
+            self.image_min = window_min
+        if window_max != self.image_max and window_max >= 0 and window_max <= 255:
+            self.image_max = window_max
+        self.update_image()
+
+    def check_adjustments(self):
+        return True if self.image_max != 255 or self.image_min != 0 else False
+
+    def adjust_image_with_window_level(self, image):
+        if self.window_level_adjuster is not None:
+            image = self.window_level_adjuster.get_processed_image(image)
+        return image
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
