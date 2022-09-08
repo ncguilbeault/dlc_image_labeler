@@ -191,7 +191,7 @@ class MainWindow(QMainWindow):
     def trigger_open_video(self):
         self.labelled_frames = {}
         self.video_path = QFileDialog.getOpenFileName(self,"Open Video File", "","Video Files (*.avi; *.mp4; *.mov)", options=QFileDialog.Options())[0]
-        if self.video_path:
+        if self.video_path != '':
             print(f'Selected video: {self.video_path}')
             success, self.image = get_video_frame(self.video_path, 0, False)
             if success:
@@ -202,6 +202,7 @@ class MainWindow(QMainWindow):
             else:
                 print(f'Failed to load frame.')
         else:
+            self.video_path = None
             print(f'Failed to load video.')
 
     def update_frame_pos(self):
@@ -327,13 +328,15 @@ class MainWindow(QMainWindow):
                 video_stem = Path(self.video_path).stem
             else:
                 video_stem = 'test'
-            if video_stem != Path(self.save_directory).stem:
-                message = self.show_message("Name of video is different from name of folder which can lead to problems with DLC. Do you wish to proceed anyways?")
+            save_stem = Path(self.save_directory).stem
+            if video_stem != save_stem:
+                message = self.show_message("Video name and save directory are named differently which can lead to problems with DLC. Do you wish to proceed anyways?",
+                f"Name of video: {video_stem}\nName of save directory: {save_stem}\n")
                 proceed = message.exec()
             else:
                 proceed = QMessageBox.Ok
             if proceed != QMessageBox.Ok:
-                print('User cancelled saving labels.')
+                print('Cancelled saving labels.')
                 return
             zero_pad_image_name = len(str(max(list(self.labelled_frames.keys()))))
             scorer = self.config['scorer']
@@ -471,9 +474,11 @@ class MainWindow(QMainWindow):
             image = self.window_level_adjuster.get_processed_image(image)
         return image
 
-    def show_message(self, message):
+    def show_message(self, message, detailed_message = None):
         message_box = QMessageBox()
         message_box.setText(message)
+        if detailed_message is not None:
+            message_box.setDetailedText(detailed_message)
         message_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         return message_box
 
