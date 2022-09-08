@@ -375,16 +375,18 @@ class MainWindow(QMainWindow):
                 return
             print(f'Labels file: {labels_path}')
             new_label_col_idxs = np.arange(3, len(data[0]), 2)
-            for frame_data in data[3:]:
+            for i, frame_data in enumerate(data[3:]):
                 frame_number = int(frame_data[2].split('.')[0][3:])
+                self.labelled_frames[frame_number] = {}
+                if i == 0:
+                    body_parts = []
                 for new_label_col_i in new_label_col_idxs:
                     label = data[1][new_label_col_i]
                     x = frame_data[new_label_col_i]
                     y = frame_data[new_label_col_i + 1]
-                    self.labelled_frames[frame_number] = {
-                        label: np.array([x, y], dtype=float)
-                    }
-            body_parts = data[1][new_label_col_idxs]
+                    self.labelled_frames[frame_number][label] = np.array([x, y], dtype=float)
+                    if i == 0:
+                        body_parts.append(label)
             colormap = 'rainbow'
             dotsize = 1
             scorer = data[0][3]
@@ -395,7 +397,7 @@ class MainWindow(QMainWindow):
                     'dotsize' : dotsize,
                     'scorer': scorer
                 }
-            self.update_frame_pos()
+            self.update_image()
         else:
             print(f'Failed to load video.')
 
