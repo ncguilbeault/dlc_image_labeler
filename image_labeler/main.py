@@ -234,6 +234,7 @@ class MainWindow(QMainWindow):
         image = self.image.copy()
 
         image = self.adjust_image_with_window_level(image)
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         if self.config is not None and self.check_labels_in_frame():
             if not self.config['multianimalproject']:
@@ -266,7 +267,6 @@ class MainWindow(QMainWindow):
                                 if self.show_text_labels:
                                     image = cv2.putText(image, f"{individual}_{label}", [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
         self.update()
 
