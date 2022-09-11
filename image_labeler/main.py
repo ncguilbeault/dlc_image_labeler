@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
 
         self.gradient = np.linspace(0, 1, 256)
         self.config = None
-        self.labelled_frames = {}
+        self.labeled_frames = {}
         self.frame_number = 0
         self.show_text_labels = False
         self.save_directory = Path(__file__).parent.parent.resolve()
@@ -116,7 +116,7 @@ class MainWindow(QMainWindow):
         self.image_max = 255
 
         self.label_image = ImageLabel(self)
-        self.image = cv2.cvtColor(cv2.imread('test.png', cv2.IMREAD_REDUCED_COLOR_8), cv2.COLOR_RGB2BGR).astype(np.uint8)
+        self.image = cv2.imread('test.png', cv2.IMREAD_REDUCED_COLOR_8).astype(np.uint8)
         self.update_image()
         self.scale = 1
         self.offset = np.array([0, 0], dtype = np.float64)
@@ -132,8 +132,14 @@ class MainWindow(QMainWindow):
         self.frame_window_slider.sliderMoved.connect(self.update_frame_pos)
         self.video_path = None
 
+        self.frame_number_label = QLabel(self)
+        self.frame_number_label.setFixedSize(self.menubar.width(), int(self.height()/20))
+        self.frame_number_label.setText("Frame number: 0")
+
         self.main_layout.addWidget(self.label_image, 0, 0, 1, 0)
         self.main_layout.addWidget(self.frame_window_slider, 1, 0, 1, 0)
+        self.main_layout.addWidget(self.frame_number_label, 2, 0, 1, 0)
+
         self.setChildrenFocusPolicy(Qt.NoFocus)
         self.show()
 
@@ -147,7 +153,7 @@ class MainWindow(QMainWindow):
 
         self.set_dlc_config_action = QAction('&Set DLC Config', self)
         self.set_dlc_config_action.setShortcut('Ctrl+D')
-        self.set_dlc_config_action.triggered.connect(self.trigger_set_dlc_config)
+        self.set_dlc_config_action.triggered.connect(self.trigger_load_dlc_config)
         self.options_menu.addAction(self.set_dlc_config_action)
 
         self.show_text_labels_action = QAction('&Show Text Labels', self)
@@ -191,7 +197,7 @@ class MainWindow(QMainWindow):
         self.options_menu.addAction(self.adjust_window_level)
 
     def trigger_open_video(self):
-        self.labelled_frames = {}
+        self.labeled_frames = {}
         self.video_path = QFileDialog.getOpenFileName(self,"Open Video File", "","Video Files (*.avi; *.mp4; *.mov)", options=QFileDialog.Options())[0]
         if self.video_path != '':
             print(f'Selected video: {self.video_path}')
@@ -210,6 +216,7 @@ class MainWindow(QMainWindow):
     def update_frame_pos(self):
         if self.video_path is not None:
             self.frame_number = int(self.frame_window_slider.sliderPosition())
+            self.frame_number_label.setText(f"Frame number: {self.frame_number}")
             success, self.image = get_video_frame(self.video_path, self.frame_number, False)
             if success:
                 self.update_image()
@@ -229,20 +236,37 @@ class MainWindow(QMainWindow):
         image = self.adjust_image_with_window_level(image)
 
         if self.config is not None and self.check_labels_in_frame():
-            labels = self.config['bodyparts']
-            cmap = plt.get_cmap(self.config['colormap'])
-            cmap_range = np.linspace(0, 255, len(labels)).astype(int)
-            radius = self.config['dotsize']
+            if not self.config['multianimalproject']:
+                bodyparts = self.config['bodyparts']
+                cmap = plt.get_cmap(self.config['colormap'])
+                cmap_range = np.linspace(0, 255, len(bodyparts)).astype(int)
+                radius = self.config['dotsize']
 
-            if self.frame_number in self.labelled_frames.keys():
-                for label_i, label in enumerate(self.labelled_frames[self.frame_number].keys()):
-                    coords = self.labelled_frames[self.frame_number][label]
-                    if not np.isnan(coords).any():
-                        color = [val*255 for val in cmap(cmap_range[label_i])[:3]]
-                        image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
-                        if self.show_text_labels:
-                            image = cv2.putText(image, label, [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+                if self.frame_number in self.labeled_frames.keys():
+                    for bodypart_i, bodypart in enumerate(self.labeled_frames[self.frame_number].keys()):
+                        coords = self.labeled_frames[self.frame_number][bodypart]
+                        if not np.isnan(coords).any():
+                            color = [val*255 for val in cmap(cmap_range[bodypart_i])[:3]]
+                            image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
+                            if self.show_text_labels:
+                                image = cv2.putText(image, label, [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+            else:
+                bodyparts = self.config['multianimalbodyparts']
+                cmap = plt.get_cmap(self.config['colormap'])
+                cmap_range = np.linspace(0, 255, len(bodyparts)).astype(int)
+                radius = self.config['dotsize']
 
+                if self.frame_number in self.labeled_frames.keys():
+                    for individual in self.labeled_frames[self.frame_number].keys():
+                        for label_i, label in enumerate(self.labeled_frames[self.frame_number][individual].keys()):
+                            coords = self.labeled_frames[self.frame_number][individual][label]
+                            if not np.isnan(coords).any():
+                                color = [val*255 for val in cmap(cmap_range[label_i])[:3]]
+                                image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
+                                if self.show_text_labels:
+                                    image = cv2.putText(image, f"{individual}_{label}", [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
         self.update()
 
@@ -261,31 +285,57 @@ class MainWindow(QMainWindow):
                     ],
                     'colormap' : 'rainbow',
                     'dotsize' : 1,
-                    'scorer': 'nick'
+                    'scorer': 'scorer',
+                    'multianimalproject' : False,
                 }
-
-            labels = self.config['bodyparts']
-            if self.frame_number not in self.labelled_frames.keys():
-                self.labelled_frames[self.frame_number] = dict([[label, np.array([np.nan, np.nan])] for label in labels])
-
-            all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
-            if not np.isnan(all_coords).any():
-                self.labelled_frames[self.frame_number] = dict([[label, np.array([np.nan, np.nan])] for label in labels])
-                all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
 
             coords = np.array([(event.pos().x() - self.label_image.x) * (1 / self.label_image.r) * (1 / self.scale), (event.pos().y() - self.label_image.y - self.menubar.height()) * (1 / self.label_image.r) * (1 / self.scale)])
             if (coords < 0).any() or coords[0] > self.image.shape[0] or coords[1] > self.image.shape[1]:
                 return
 
-            label_i = np.isnan(all_coords).all(axis=1).argmax()
-            self.labelled_frames[self.frame_number][labels[label_i]] = coords
+            if not self.config['multianimalproject']:
+
+                bodyparts = self.config['bodyparts']
+
+                if self.frame_number not in self.labeled_frames.keys():
+                    self.labeled_frames[self.frame_number] = dict([[bodypart, np.array([np.nan, np.nan])] for bodypart in bodyparts])
+
+                all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
+                if not np.isnan(all_coords).any():
+                    self.labeled_frames[self.frame_number] = dict([[bodypart, np.array([np.nan, np.nan])] for bodypart in bodyparts])
+                    all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
+
+                bodypart_i = np.isnan(all_coords).all(axis=1).argmax()
+                self.labeled_frames[self.frame_number][bodyparts[bodypart_i]] = coords
+                
+                self.update_image()
             
-            self.update_image()
+            else:
+                bodyparts = self.config['multianimalbodyparts']
+                individuals = self.config['individuals']
+
+                if self.frame_number not in self.labeled_frames.keys():
+                    self.labeled_frames[self.frame_number] = dict([[individual, dict([[bodypart, np.array([np.nan, np.nan])] for bodypart in bodyparts])] for individual in individuals])
+                
+                all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)
+                if not np.isnan(all_coords).any():
+                    self.labeled_frames[self.frame_number] = dict([[individual, dict([[bodypart, np.array([np.nan, np.nan])] for bodypart in bodyparts])] for individual in individuals])
+                    all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)         
+
+                coord_i = np.isnan(all_coords).all(axis=1).argmax()
+                individual_i = int(coord_i / len(bodyparts))
+                bodypart_i = int(coord_i - (individual_i * len(bodyparts)))
+                self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = coords
+
+                self.update_image()
 
     def check_labels_in_frame(self):
-        if self.frame_number not in self.labelled_frames.keys():
+        if self.frame_number not in self.labeled_frames.keys():
             return False
-        all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
+        if not self.config['multianimalproject']:
+            all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
+        else:
+            all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)
         if np.isnan(all_coords).all():
             return False
         return True
@@ -306,9 +356,9 @@ class MainWindow(QMainWindow):
             self.label_image.update_params(offset = self.offset, scale = self.scale)
             self.update()
 
-    def trigger_set_dlc_config(self):
+    def trigger_load_dlc_config(self):
         self.config = None
-        self.labelled_frames = {}
+        self.labeled_frames = {}
         self.update_frame_pos()
         self.dlc_config_file = QFileDialog.getOpenFileName(self,"Open DLC Config File", "","Config Files (*.yaml)", options=QFileDialog.Options())[0]
         if self.dlc_config_file:
@@ -325,7 +375,7 @@ class MainWindow(QMainWindow):
             print(f'Failed to show text labels because no config file loaded.')
 
     def trigger_save_labels(self):
-        if self.config is not None and len(self.labelled_frames.keys()) > 0:
+        if self.config is not None and len(self.labeled_frames.keys()) > 0:
             if self.video_path is not None:
                 video_stem = Path(self.video_path).stem
             else:
@@ -340,23 +390,37 @@ class MainWindow(QMainWindow):
             if proceed != QMessageBox.Ok:
                 print('Cancelled saving labels.')
                 return
-            zero_pad_image_name = len(str(max(list(self.labelled_frames.keys()))))
+            zero_pad_image_name = len(str(max(list(self.labeled_frames.keys()))))
             scorer = self.config['scorer']
-            labels = self.config['bodyparts']
-            columns = pd.MultiIndex.from_product([[scorer], labels, ["x", "y"],], names=["scorer", "bodyparts", "coords",],)
-            idx = pd.MultiIndex.from_tuples([("labeled-data", video_stem, f"img{str(labelled_frame_key).zfill(zero_pad_image_name)}.png") for labelled_frame_key in self.labelled_frames.keys()])
-            data = np.array([np.array([self.labelled_frames[key][label] for label in labels]).ravel() for key in self.labelled_frames.keys()], dtype=float)
-            df = pd.DataFrame(data, index = idx, columns = columns)
-            df.sort_index(inplace = True)
-            df.reindex(labels, axis = 1, level = df.columns.names.index('bodyparts'))
-            csv_path = f'{self.save_directory}\\CollectedData_nick.csv'
-            df.to_csv(csv_path)
-            hdf_path = csv_path.split('.csv')[0] + '.h5'
-            df.to_hdf(hdf_path, "df_with_missing")
-            for labelled_frame_key in self.labelled_frames:
-                success, frame = get_video_frame(self.video_path, labelled_frame_key, False)
+            if not self.config['multianimalprojects']:
+                bodyparts = self.config['bodyparts']
+                columns = pd.MultiIndex.from_product([[scorer], bodyparts, ["x", "y"],], names=["scorer", "bodyparts", "coords",],)
+                idx = pd.MultiIndex.from_tuples([("labeled-data", video_stem, f"img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png") for labeled_frame_key in self.labeled_frames.keys()])
+                data = np.array([np.array([self.labeled_frames[frame_key][bodypart] for bodypart in bodyparts]).ravel() for frame_key in self.labeled_frames.keys()], dtype=float)
+                df = pd.DataFrame(data, index = idx, columns = columns)
+                df.sort_index(inplace = True)
+                df.reindex(bodyparts, axis = 1, level = df.columns.names.index('bodyparts'))
+                csv_path = f'{self.save_directory}\\CollectedData_{scorer}.csv'
+                df.to_csv(csv_path)
+                hdf_path = csv_path.split('.csv')[0] + '.h5'
+                df.to_hdf(hdf_path, "df_with_missing")
+            else:
+                bodyparts = self.config['multianimalbodyparts']
+                individuals = self.config['individuals']
+                columns = pd.MultiIndex.from_product([[scorer], individuals, bodyparts, ["x", "y"],], names=["scorer", "individuals", "bodyparts", "coords",],)
+                idx = pd.MultiIndex.from_tuples([("labeled-data", video_stem, f"img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png") for labeled_frame_key in self.labeled_frames.keys()])
+                data = np.array([np.array([self.labeled_frames[frame_key][individual][bodypart] for individual in individuals for bodypart in bodyparts]).ravel() for frame_key in self.labeled_frames.keys()], dtype=float)
+                df = pd.DataFrame(data, index = idx, columns = columns)
+                df.sort_index(inplace = True)
+                df.reindex(bodyparts, axis = 1, level = df.columns.names.index('bodyparts'))
+                csv_path = f'{self.save_directory}\\CollectedData_{scorer}.csv'
+                df.to_csv(csv_path)
+                hdf_path = csv_path.split('.csv')[0] + '.h5'
+                df.to_hdf(hdf_path, "df_with_missing")
+            for labeled_frame_key in self.labeled_frames:
+                success, frame = get_video_frame(self.video_path, labeled_frame_key, False)
                 if success:
-                    image_path = f'{self.save_directory}\\img{str(labelled_frame_key).zfill(zero_pad_image_name)}.png'
+                    image_path = f'{self.save_directory}\\img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png'
                     cv2.imwrite(image_path, frame)
             print(f'Saved labels: {csv_path} {hdf_path}')
         else:
@@ -371,65 +435,106 @@ class MainWindow(QMainWindow):
             print(f'Save directory: {self.save_directory}')
 
     def trigger_load_labels(self):
-        if len(self.labelled_frames.keys()) != 0:
+        if len(self.labeled_frames.keys()) != 0:
             print(f'Failed to load labels because labels are already loaded. Save existing labels and then remove all labels before loading new ones.')
             return
-        self.labelled_frames = {}
+        self.labeled_frames = {}
         if self.video_path is None:
             print(f'Failed to load labels because no video has been selected.')
             return
+        if self.config is None:
+            print(f'Failed to load labels because no config file has been selected.')
+            return
         labels_path = QFileDialog.getOpenFileName(self,"Load Labels File", "","Labels Files (*.csv)", options=QFileDialog.Options())[0]
-        if labels_path:
-            video_stem = Path(self.video_path).stem
+        if labels_path and labels_path != '':
             with open(labels_path, 'r') as f:
                 data = [row for row in csv.reader(f)]
-            if data[3][1] != video_stem:
-                print('Failed to load labels because labels are for a different video.')
-                return
-            print(f'Labels file: {labels_path}')
-            new_label_col_idxs = np.arange(3, len(data[0]), 2)
-            for i, frame_data in enumerate(data[3:]):
-                frame_number = int(frame_data[2].split('.')[0][3:])
-                self.labelled_frames[frame_number] = {}
-                if i == 0:
-                    body_parts = []
-                for new_label_col_i in new_label_col_idxs:
-                    label = data[1][new_label_col_i]
-                    x = frame_data[new_label_col_i]
-                    y = frame_data[new_label_col_i + 1]
-                    self.labelled_frames[frame_number][label] = np.array([x, y], dtype=float)
-                    if i == 0:
-                        body_parts.append(label)
-            colormap = 'rainbow'
-            dotsize = 1
-            scorer = data[0][3]
-            if self.config is None:
-                self.config = {
-                    'bodyparts' : body_parts,
-                    'colormap' : colormap,
-                    'dotsize' : dotsize,
-                    'scorer': scorer
-                }
+            video_stem = Path(self.video_path).stem
+            if "video_sets" in self.config.keys():
+                video_crop_params = [self.config["video_sets"][video_key]["crop"] for video_key in self.config["video_sets"].keys() if Path(video_key).stem == video_stem]
+                if len(video_crop_params) == 0:
+                    print('Failed to load labels because video is not included in video sets of DLC config.')
+                    return
+                x_offset = float(video_crop_params[0].split(', ')[0])
+                y_offset = float(video_crop_params[0].split(', ')[2])
+            if not self.config['multianimalproject']:
+                if data[3][1] != video_stem:
+                    print('Failed to load labels because labels are for a different video.')
+                    return
+                print(f'Labels file: {labels_path}')
+                new_bodypart_col_idxs = np.arange(3, len(data[0]), 2)
+                for frame_data in data[3:]:
+                    frame_number = int(frame_data[2].split('.')[0][3:])
+                    self.labeled_frames[frame_number] = {}
+                    for new_bodypart_col_i in new_bodypart_col_idxs:
+                        bodypart = data[1][new_bodypart_col_i]
+                        x = frame_data[new_bodypart_col_i]
+                        y = frame_data[new_bodypart_col_i + 1]
+                        if x == '' and y == '':
+                            x = y = np.nan
+                        x = float(x) + x_offset
+                        y = float(y) + y_offset
+                        self.labeled_frames[frame_number][bodypart] = np.array([x, y], dtype=float)
+            else:
+                if data[4][1] != video_stem:
+                    print('Failed to load labels because labels are for a different video.')
+                    return
+                print(f'Labels file: {labels_path}')
+                new_individual_col_idxs = np.arange(3, len(data[0]), 2 * len(self.config['multianimalbodyparts']))
+                new_bodypart_col_idxs = np.arange(3, len(data[0]), 2)
+                for i, frame_data in enumerate(data[4:]):
+                    frame_number = int(frame_data[2].split('.')[0][3:])
+                    self.labeled_frames[frame_number] = {}
+                    for new_bodypart_col_i in new_bodypart_col_idxs:
+                        if new_bodypart_col_i in new_individual_col_idxs:
+                            individual = data[1][new_bodypart_col_i]
+                            self.labeled_frames[frame_number][individual] = {}
+                        bodypart = data[2][new_bodypart_col_i]
+                        x = frame_data[new_bodypart_col_i]
+                        y = frame_data[new_bodypart_col_i + 1]
+                        if x == '' and y == '':
+                            x = y = np.nan
+                        x = float(x) + x_offset
+                        y = float(y) + y_offset
+                        self.labeled_frames[frame_number][individual][bodypart] = np.array([x, y], dtype=float)
+           
             self.update_image()
         else:
-            print(f'Failed to load video.')
+            print(f'Failed to load labels.')
 
     def trigger_remove_labels(self):
-        if self.frame_number in self.labelled_frames.keys():
-            del(self.labelled_frames[self.frame_number])
+        if self.frame_number in self.labeled_frames.keys():
+            del(self.labeled_frames[self.frame_number])
             self.update_image()
 
     def trigger_remove_all_labels(self):
-        self.labelled_frames = {}
+        self.labeled_frames = {}
         self.update_image()
 
     def trigger_undo_last_label(self):
-        if self.check_labels_in_frame():
-            all_coords = np.array(list(self.labelled_frames[self.frame_number].values())).astype(float)
-            if not np.isnan(all_coords).all():
-                labels = self.config['bodyparts']
-                label_i = np.isnan(all_coords).all(axis=1).argmax() - 1
-                self.labelled_frames[self.frame_number][labels[label_i]] = np.array([np.nan, np.nan])
+        if self.config is not None and self.check_labels_in_frame():
+            if not self.config['multianimalproject']:
+                all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
+                if not np.isnan(all_coords).all():
+                    bodyparts = self.config['bodyparts']
+                    if not np.isnan(all_coords).any():
+                        bodypart_i = len(all_coords) - 1
+                    else:
+                        bodypart_i = np.isnan(all_coords).all(axis=1).argmax() - 1
+                    self.labeled_frames[self.frame_number][bodyparts[bodypart_i]] = np.array([np.nan, np.nan])
+            else:
+                all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)
+                if not np.isnan(all_coords).all():
+                    individuals = self.config['individuals']
+                    bodyparts = self.config['multianimalbodyparts']
+                    if not np.isnan(all_coords).any():
+                        coord_i = len(all_coords) - 1
+                    else:
+                        coord_i = np.isnan(all_coords).all(axis=1).argmax() - 1
+                    individual_i = int(coord_i / len(bodyparts))
+                    bodypart_i = int(coord_i - (individual_i * len(bodyparts)))
+                    self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = np.array([np.nan, np.nan])
+        # print(self.check_labels_in_frame())
         self.update_image()
 
     def setChildrenFocusPolicy(self, policy):
@@ -476,11 +581,13 @@ class MainWindow(QMainWindow):
             image = self.window_level_adjuster.get_processed_image(image)
         return image
 
-    def show_message(self, message, detailed_message = None):
+    def show_message(self, message, detailed_message = None, title = None):
         message_box = QMessageBox()
         message_box.setText(message)
         if detailed_message is not None:
             message_box.setDetailedText(detailed_message)
+        if title is not None:
+            message_box.setWindowTitle(title)
         message_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         return message_box
 
