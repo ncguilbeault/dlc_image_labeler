@@ -32,9 +32,9 @@ class ImageLabel(QWidget):
         height = self.height()
         imageWidth = self.image.width()
         imageHeight = self.image.height()
-        r1 = width / imageWidth
-        r2 = height / imageHeight
-        self.r = min(r1, r2)
+        self.r_width = width / imageWidth
+        self.r_height = height / imageHeight
+        self.r = min(self.r_width, self.r_height)
         self.x = (width + self.offset[0] / self.scale * self.r - imageWidth * self.r) / 2
         self.y = (height + self.offset[1] / self.scale * self.r - imageHeight * self.r) / 2
         painter.setTransform(QTransform().translate(self.x, self.y).scale(self.r * self.scale, self.r * self.scale))
@@ -290,9 +290,9 @@ class MainWindow(QMainWindow):
                 }
 
             coords = np.array([(event.pos().x() - self.label_image.x) * (1 / self.label_image.r) * (1 / self.scale), (event.pos().y() - self.label_image.y - self.menubar.height()) * (1 / self.label_image.r) * (1 / self.scale)])
-            if (coords < 0).any() or coords[0] > self.image.shape[0] or coords[1] > self.image.shape[1]:
+            if (coords < 0).any() or coords[0] > self.image.shape[1] or coords[1] > self.image.shape[0]:
                 return
-
+            
             if not self.config['multianimalproject']:
 
                 bodyparts = self.config['bodyparts']
@@ -309,7 +309,7 @@ class MainWindow(QMainWindow):
                 self.labeled_frames[self.frame_number][bodyparts[bodypart_i]] = coords
                 
                 self.update_image()
-            
+
             else:
                 bodyparts = self.config['multianimalbodyparts']
                 individuals = self.config['individuals']
@@ -351,7 +351,7 @@ class MainWindow(QMainWindow):
             if self.prev_pos is not None:
                 delta_pos = ((event.x() - self.prev_pos[0]) / self.width(), (event.y() - self.prev_pos[1]) / self.height())
                 self.prev_pos = (event.x(), event.y())
-                self.offset += (delta_pos[0] * self.width() * self.scale / self.label_image.r, delta_pos[1] * self.height() * self.scale / self.label_image.r)
+                self.offset += (delta_pos[0] * self.width() * self.scale / self.label_image.r_width, delta_pos[1] * self.height() * self.scale / self.label_image.r_height)
 
             self.label_image.update_params(offset = self.offset, scale = self.scale)
             self.update()
@@ -390,13 +390,25 @@ class MainWindow(QMainWindow):
             if proceed != QMessageBox.Ok:
                 print('Cancelled saving labels.')
                 return
+            if "video_sets" in self.config.keys():
+                video_crop_params = [self.config["video_sets"][video_key]["crop"] for video_key in self.config["video_sets"].keys() if Path(video_key).stem == video_stem]
+                if len(video_crop_params) == 0:
+                    print('Failed to load labels because video is not included in video sets of DLC config.')
+                    return
+                x_offset = int(video_crop_params[0].split(', ')[0])
+                y_offset = int(video_crop_params[0].split(', ')[2])
+                crop_width = int(video_crop_params[0].split(', ')[1])
+                crop_height = int(video_crop_params[0].split(', ')[3])
+            else:
+                x_offset = 0
+                y_offset = 0
             zero_pad_image_name = len(str(max(list(self.labeled_frames.keys()))))
             scorer = self.config['scorer']
-            if not self.config['multianimalprojects']:
+            if not self.config['multianimalproject']:
                 bodyparts = self.config['bodyparts']
                 columns = pd.MultiIndex.from_product([[scorer], bodyparts, ["x", "y"],], names=["scorer", "bodyparts", "coords",],)
                 idx = pd.MultiIndex.from_tuples([("labeled-data", video_stem, f"img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png") for labeled_frame_key in self.labeled_frames.keys()])
-                data = np.array([np.array([self.labeled_frames[frame_key][bodypart] for bodypart in bodyparts]).ravel() for frame_key in self.labeled_frames.keys()], dtype=float)
+                data = np.array([np.array([self.labeled_frames[frame_key][bodypart] - np.array([x_offset, y_offset]) for bodypart in bodyparts]).ravel() for frame_key in self.labeled_frames.keys()], dtype=float)
                 df = pd.DataFrame(data, index = idx, columns = columns)
                 df.sort_index(inplace = True)
                 df.reindex(bodyparts, axis = 1, level = df.columns.names.index('bodyparts'))
@@ -409,7 +421,7 @@ class MainWindow(QMainWindow):
                 individuals = self.config['individuals']
                 columns = pd.MultiIndex.from_product([[scorer], individuals, bodyparts, ["x", "y"],], names=["scorer", "individuals", "bodyparts", "coords",],)
                 idx = pd.MultiIndex.from_tuples([("labeled-data", video_stem, f"img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png") for labeled_frame_key in self.labeled_frames.keys()])
-                data = np.array([np.array([self.labeled_frames[frame_key][individual][bodypart] for individual in individuals for bodypart in bodyparts]).ravel() for frame_key in self.labeled_frames.keys()], dtype=float)
+                data = np.array([np.array([self.labeled_frames[frame_key][individual][bodypart] - np.array([x_offset, y_offset]) for individual in individuals for bodypart in bodyparts]).ravel() for frame_key in self.labeled_frames.keys()], dtype=float)
                 df = pd.DataFrame(data, index = idx, columns = columns)
                 df.sort_index(inplace = True)
                 df.reindex(bodyparts, axis = 1, level = df.columns.names.index('bodyparts'))
@@ -421,7 +433,7 @@ class MainWindow(QMainWindow):
                 success, frame = get_video_frame(self.video_path, labeled_frame_key, False)
                 if success:
                     image_path = f'{self.save_directory}\\img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png'
-                    cv2.imwrite(image_path, frame)
+                    cv2.imwrite(image_path, frame[y_offset:crop_height, x_offset:crop_width])
             print(f'Saved labels: {csv_path} {hdf_path}')
         else:
             print('Failed to save labels because either no config file loaded or no labeled frames.')
@@ -457,6 +469,9 @@ class MainWindow(QMainWindow):
                     return
                 x_offset = float(video_crop_params[0].split(', ')[0])
                 y_offset = float(video_crop_params[0].split(', ')[2])
+            else:
+                x_offset = 0
+                y_offset = 0
             if not self.config['multianimalproject']:
                 if data[3][1] != video_stem:
                     print('Failed to load labels because labels are for a different video.')
