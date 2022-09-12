@@ -327,6 +327,9 @@ class MainWindow(QMainWindow):
         if self.video_path is not None:
             self.frame_number = int(self.frame_window_slider.sliderPosition())
             self.frame_number_label.setText(f"Frame number: {self.frame_number}")
+            # self.bodypart_selected_index = 0
+            self.bodypart_selected_index = self.get_next_label()
+            self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)
             success, self.image = get_video_frame(self.video_path, self.frame_number, False)
             if success:
                 self.update_image()
@@ -472,7 +475,7 @@ class MainWindow(QMainWindow):
     def trigger_load_dlc_config(self):
         self.config = None
         self.labeled_frames = {}
-        self.update_frame_pos()
+        self.update_image()
         self.dlc_config_file = QFileDialog.getOpenFileName(self,"Open DLC Config File", "","Config Files (*.yaml)", options=QFileDialog.Options())[0]
         if self.dlc_config_file:
             print(f'Config file: {self.dlc_config_file}')
@@ -494,7 +497,7 @@ class MainWindow(QMainWindow):
     def trigger_show_text_labels(self):
         if self.config is not None:
             self.show_text_labels = self.show_text_labels == False
-            self.update_frame_pos()
+            self.update_image()
         else:
             print(f'Failed to show text labels because no config file loaded.')
 
@@ -752,6 +755,21 @@ class MainWindow(QMainWindow):
                     idxs = np.where(~np.isnan(all_coords).all(axis=1))[0]
                     latest_label = idxs[-1]
         return latest_label
+
+    def get_next_label(self):
+        next_label = 0
+        if self.config is not None:
+            if not self.config['multianimalproject']:
+                all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
+            else:
+                all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)
+            if not np.isnan(all_coords).all():
+                if not np.isnan(all_coords).any():
+                    next_label = len(all_coords) - 1
+                else:
+                    idxs = np.where(np.isnan(all_coords).all(axis=1))[0]
+                    next_label = idxs[0]
+        return next_label
 
     def trigger_show_bodypart_label_window(self):
         self.bodypart_label_window.show()
