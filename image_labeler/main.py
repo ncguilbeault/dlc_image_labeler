@@ -302,7 +302,7 @@ class MainWindow(QMainWindow):
         self.options_menu.addAction(self.show_bodypart_label_window_action)
 
         self.delete_selected_label_action = QAction('&Delete Bodypart Label', self)
-        self.delete_selected_label_action.setShortcut('Ctrl+B')
+        self.delete_selected_label_action.setShortcut('Del')
         self.delete_selected_label_action.triggered.connect(self.trigger_delete_selected_bodypart_label)
         self.options_menu.addAction(self.delete_selected_label_action)
 
@@ -417,9 +417,8 @@ class MainWindow(QMainWindow):
 
                 self.labeled_frames[self.frame_number][bodyparts[self.bodypart_selected_index]] = coords
 
-                self.bodypart_selected_index += 1
-                if self.bodypart_selected_index >= len(bodyparts):
-                    self.bodypart_selected_index = 0
+                if self.bodypart_selected_index < len(bodyparts) - 1:
+                    self.bodypart_selected_index += 1
                 
                 self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)
                 
@@ -436,9 +435,8 @@ class MainWindow(QMainWindow):
                 bodypart_i = int(self.bodypart_selected_index - (individual_i * len(bodyparts)))
                 self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = coords
 
-                self.bodypart_selected_index += 1
-                if self.bodypart_selected_index >= (len(bodyparts) * len(individuals)):
-                    self.bodypart_selected_index = 0
+                if self.bodypart_selected_index < len(bodyparts) - 1:
+                    self.bodypart_selected_index += 1
 
                 self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)               
 
