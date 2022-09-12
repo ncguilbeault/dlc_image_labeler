@@ -6,13 +6,14 @@ import pyqtgraph as pg
 import sys
 from utils import *
 import matplotlib.pyplot as plt
+import matplotlib.colors as clrs
 from pathlib import Path
 import csv
 import pandas as pd
 
 class ImageLabel(QWidget):
     def __init__(self, parent = None):
-        super().__init__(parent)
+        super(ImageLabel, self).__init__(parent)
         self.image = None
         self.home()
 
@@ -49,7 +50,8 @@ class WindowLevelAdjuster(QMainWindow):
     update_window_level = pyqtSignal(object)
 
     def __init__(self, image, parent=None):
-        super().__init__(parent)
+        super(WindowLevelAdjuster, self).__init__(parent)
+        self.setWindowTitle("Window Level Adjustment")
         self.image = image.astype(np.float64).swapaxes(0, 1)
         self.image_view = pg.image(self.image, autoRange=True)
         self.image_view.getHistogramWidget().sigLevelsChanged.connect(self.sig_levels_changed)
@@ -79,6 +81,94 @@ class WindowLevelAdjuster(QMainWindow):
         self.image_view.getImageItem().render()
         new_image = image = self.image_view.getImageItem().qimage
         return new_image.data
+
+    def keyPressEvent(self, event):
+        return self.parent().keyPressEvent(event)
+
+class BodypartLabelWindow(QMainWindow):
+
+    update_bodypart_selected = pyqtSignal(object)
+
+    def __init__(self, parent=None):
+        super(BodypartLabelWindow, self).__init__(parent)
+        self.setWindowTitle("Bodypart Labels")
+        self.resize(300, 300)
+        self.checkboxes = []
+        self.groupbox = QGroupBox(self)
+        self.vertical_layout = QVBoxLayout()
+        self.groupbox.setLayout(self.vertical_layout)
+        self.widget = QWidget()
+        self.layout = QGridLayout()
+        self.layout.addWidget(self.groupbox, 0, 0)
+        self.widget.setLayout(self.layout)
+        self.setCentralWidget(self.widget)
+
+    def update_groupbox_with_bodyparts(self, bodyparts, colors, individuals = None):
+        if individuals is None:
+            for bodypart, color in zip(bodyparts, colors):
+                checkbox = QCheckBox(f"{bodypart}")
+                hex_color = clrs.to_hex(color)
+                checkbox.setStyleSheet(
+                    "QCheckBox::indicator:checked"
+                            "{"
+                            f"background-color : {hex_color};"
+                            "border : 3px solid limegreen;"
+                            "border-radius :12px;"
+                            "}"
+                    "QCheckBox::indicator:unchecked"
+                            "{"
+                            f"background-color : {hex_color};"
+                            f"border : 5px solid rgba(255, 255, 255, 0);"
+                            "border-radius :12px;"
+                            "}"
+                )
+                self.checkboxes.append(checkbox)
+                self.vertical_layout.addWidget(checkbox)
+                checkbox.clicked.connect(self.check_bodypart_selection)
+        else:
+            for individual in individuals:
+                for bodypart, color in zip(bodyparts, colors):
+                    checkbox = QCheckBox(f"{individual}_{bodypart}")
+                    hex_color = clrs.to_hex(color)
+                    checkbox.setStyleSheet(
+                        "QCheckBox::indicator:checked"
+                                "{"
+                                f"background-color : {hex_color};"
+                                "border : 3px solid limegreen;"
+                                "border-radius :12px;"
+                                "}"
+                        "QCheckBox::indicator:unchecked"
+                                "{"
+                                f"background-color : {hex_color};"
+                                f"border : 5px solid rgba(255, 255, 255, 0);"
+                                "border-radius :12px;"
+                                "}"
+                    )
+                    self.checkboxes.append(checkbox)
+                    self.vertical_layout.addWidget(checkbox)
+                    checkbox.clicked.connect(self.check_bodypart_selection)
+
+    def check_bodypart_selection(self, sender = None):
+        if sender is None or isinstance(sender, bool):
+            sender = self.sender()
+        for i in range(len(self.checkboxes)):
+            checkbox = self.checkboxes[i]
+            if checkbox != sender and checkbox.isChecked(): 
+                checkbox.setChecked(False)
+            if checkbox == sender:
+                if not checkbox.isChecked():
+                    checkbox.setChecked(True)
+                else:
+                    self.update_bodypart_selected.emit(i)
+
+    def set_bodypart_checked(self, index):
+        checkbox = self.checkboxes[index]
+        checkbox.setChecked(True)
+        self.check_bodypart_selection(sender = checkbox)
+
+    def keyPressEvent(self, event):
+        return self.parent().keyPressEvent(event)
+
 
 class MainWindow(QMainWindow):
 
@@ -124,6 +214,11 @@ class MainWindow(QMainWindow):
 
         self.window_level_adjuster = WindowLevelAdjuster(self.image, self)
         self.window_level_adjuster.update_window_level.connect(self.update_window_level)
+
+        self.bodypart_label_window = BodypartLabelWindow(self)
+        self.bodypart_label_window.update_bodypart_selected.connect(self.update_bodypart_selected)
+        self.bodypart_label_window.show()
+        self.bodypart_selected_index = 0
 
         self.frame_window_slider = QSlider(Qt.Horizontal, self.main_widget)
         self.frame_window_slider.resize(self.size())
@@ -186,15 +281,25 @@ class MainWindow(QMainWindow):
         self.remove_all_labels_action.triggered.connect(self.trigger_remove_all_labels)
         self.options_menu.addAction(self.remove_all_labels_action)
 
-        self.undo_last_label = QAction('&Undo Last Label', self)
-        self.undo_last_label.setShortcut('Ctrl+Z')
-        self.undo_last_label.triggered.connect(self.trigger_undo_last_label)
-        self.options_menu.addAction(self.undo_last_label)
+        self.delete_last_label = QAction('&Delete Last Label', self)
+        self.delete_last_label.setShortcut('Ctrl+Z')
+        self.delete_last_label.triggered.connect(self.trigger_delete_last_label)
+        self.options_menu.addAction(self.delete_last_label)
 
         self.adjust_window_level = QAction('&Adjust Window Level', self)
         self.adjust_window_level.setShortcut('Ctrl+A')
         self.adjust_window_level.triggered.connect(self.trigger_show_window_level)
         self.options_menu.addAction(self.adjust_window_level)
+
+        self.home_image = QAction('&Home Image', self)
+        self.home_image.setShortcut('Ctrl+H')
+        self.home_image.triggered.connect(self.trigger_home_image)
+        self.options_menu.addAction(self.home_image)
+
+        self.show_bodypart_label_window = QAction('&Show Bodypart Label Window', self)
+        self.show_bodypart_label_window.setShortcut('Ctrl+B')
+        self.show_bodypart_label_window.triggered.connect(self.trigger_show_bodypart_label_window)
+        self.options_menu.addAction(self.show_bodypart_label_window)
 
     def trigger_open_video(self):
         self.labeled_frames = {}
@@ -250,7 +355,7 @@ class MainWindow(QMainWindow):
                             color = [val*255 for val in cmap(cmap_range[bodypart_i])[:3]]
                             image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
                             if self.show_text_labels:
-                                image = cv2.putText(image, label, [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+                                image = cv2.putText(image, bodypart, [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
             else:
                 bodyparts = self.config['multianimalbodyparts']
                 cmap = plt.get_cmap(self.config['colormap'])
@@ -259,13 +364,13 @@ class MainWindow(QMainWindow):
 
                 if self.frame_number in self.labeled_frames.keys():
                     for individual in self.labeled_frames[self.frame_number].keys():
-                        for label_i, label in enumerate(self.labeled_frames[self.frame_number][individual].keys()):
-                            coords = self.labeled_frames[self.frame_number][individual][label]
+                        for bodypart_i, bodypart in enumerate(self.labeled_frames[self.frame_number][individual].keys()):
+                            coords = self.labeled_frames[self.frame_number][individual][bodypart]
                             if not np.isnan(coords).any():
-                                color = [val*255 for val in cmap(cmap_range[label_i])[:3]]
+                                color = [val*255 for val in cmap(cmap_range[bodypart_i])[:3]]
                                 image = cv2.circle(image, [int(val) for val in coords], radius, color, -1, cv2.LINE_AA)
                                 if self.show_text_labels:
-                                    image = cv2.putText(image, f"{individual}_{label}", [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+                                    image = cv2.putText(image, f"{individual}_{bodypart}", [int(val) for val in coords], cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
 
         self.label_image.set_image(QImage(image.data, image.shape[1], image.shape[0], QImage.Format_RGB888))
         self.update()
@@ -288,6 +393,11 @@ class MainWindow(QMainWindow):
                     'scorer': 'scorer',
                     'multianimalproject' : False,
                 }
+                bodyparts = self.config['bodyparts']
+                cmap = plt.get_cmap(self.config['colormap'])
+                cmap_range = np.linspace(0, 255, len(bodyparts)).astype(int)
+                colors = [cmap(cmap_range[i])[:3] for i in range(len(bodyparts))]
+                self.bodypart_label_window.update_groupbox_with_bodyparts(bodyparts, colors)
 
             coords = np.array([(event.pos().x() - self.label_image.x) * (1 / self.label_image.r) * (1 / self.scale), (event.pos().y() - self.label_image.y - self.menubar.height()) * (1 / self.label_image.r) * (1 / self.scale)])
             if (coords < 0).any() or coords[0] > self.image.shape[1] or coords[1] > self.image.shape[0]:
@@ -300,13 +410,13 @@ class MainWindow(QMainWindow):
                 if self.frame_number not in self.labeled_frames.keys():
                     self.labeled_frames[self.frame_number] = dict([[bodypart, np.array([np.nan, np.nan])] for bodypart in bodyparts])
 
-                all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
-                if not np.isnan(all_coords).any():
-                    self.labeled_frames[self.frame_number] = dict([[bodypart, np.array([np.nan, np.nan])] for bodypart in bodyparts])
-                    all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
+                self.labeled_frames[self.frame_number][bodyparts[self.bodypart_selected_index]] = coords
 
-                bodypart_i = np.isnan(all_coords).all(axis=1).argmax()
-                self.labeled_frames[self.frame_number][bodyparts[bodypart_i]] = coords
+                self.bodypart_selected_index += 1
+                if self.bodypart_selected_index >= len(bodyparts):
+                    self.bodypart_selected_index = 0
+                
+                self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)
                 
                 self.update_image()
 
@@ -317,15 +427,15 @@ class MainWindow(QMainWindow):
                 if self.frame_number not in self.labeled_frames.keys():
                     self.labeled_frames[self.frame_number] = dict([[individual, dict([[bodypart, np.array([np.nan, np.nan])] for bodypart in bodyparts])] for individual in individuals])
                 
-                all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)
-                if not np.isnan(all_coords).any():
-                    self.labeled_frames[self.frame_number] = dict([[individual, dict([[bodypart, np.array([np.nan, np.nan])] for bodypart in bodyparts])] for individual in individuals])
-                    all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)         
-
-                coord_i = np.isnan(all_coords).all(axis=1).argmax()
-                individual_i = int(coord_i / len(bodyparts))
-                bodypart_i = int(coord_i - (individual_i * len(bodyparts)))
+                individual_i = int(self.bodypart_selected_index / len(bodyparts))
+                bodypart_i = int(self.bodypart_selected_index - (individual_i * len(bodyparts)))
                 self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = coords
+
+                self.bodypart_selected_index += 1
+                if self.bodypart_selected_index >= (len(bodyparts) * len(individuals)):
+                    self.bodypart_selected_index = 0
+
+                self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)               
 
                 self.update_image()
 
@@ -364,6 +474,17 @@ class MainWindow(QMainWindow):
         if self.dlc_config_file:
             print(f'Config file: {self.dlc_config_file}')
             self.config = load_yaml(self.dlc_config_file)
+            if not self.config['multianimalproject']:
+                individuals = None
+                bodyparts = self.config['bodyparts']
+            else:
+                individuals = self.config['individuals']
+                bodyparts = self.config['multianimalbodyparts']
+            cmap = plt.get_cmap(self.config['colormap'])
+            cmap_range = np.linspace(0, 255, len(bodyparts)).astype(int)
+            colors = [cmap(cmap_range[i])[:3] for i in range(len(bodyparts))]
+            self.bodypart_label_window.update_groupbox_with_bodyparts(bodyparts, colors, individuals = individuals)
+            self.bodypart_label_window.set_bodypart_checked(0)
         else:
             print(f'Failed to load config.')
 
@@ -520,37 +641,36 @@ class MainWindow(QMainWindow):
     def trigger_remove_labels(self):
         if self.frame_number in self.labeled_frames.keys():
             del(self.labeled_frames[self.frame_number])
+            self.bodypart_selected_index = 0
+            self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)
             self.update_image()
 
     def trigger_remove_all_labels(self):
         self.labeled_frames = {}
+        self.bodypart_selected_index = 0
+        self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)
         self.update_image()
 
-    def trigger_undo_last_label(self):
+    def trigger_delete_last_label(self):
         if self.config is not None and self.check_labels_in_frame():
-            if not self.config['multianimalproject']:
-                all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
-                if not np.isnan(all_coords).all():
+            label_i = self.get_latest_label()
+            if label_i is not None:
+                if not self.config['multianimalproject']:
                     bodyparts = self.config['bodyparts']
-                    if not np.isnan(all_coords).any():
-                        bodypart_i = len(all_coords) - 1
-                    else:
-                        bodypart_i = np.isnan(all_coords).all(axis=1).argmax() - 1
-                    self.labeled_frames[self.frame_number][bodyparts[bodypart_i]] = np.array([np.nan, np.nan])
-            else:
-                all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)
-                if not np.isnan(all_coords).all():
+                    self.labeled_frames[self.frame_number][bodyparts[label_i]] = np.array([np.nan, np.nan])
+                else:
                     individuals = self.config['individuals']
                     bodyparts = self.config['multianimalbodyparts']
-                    if not np.isnan(all_coords).any():
-                        coord_i = len(all_coords) - 1
-                    else:
-                        coord_i = np.isnan(all_coords).all(axis=1).argmax() - 1
-                    individual_i = int(coord_i / len(bodyparts))
-                    bodypart_i = int(coord_i - (individual_i * len(bodyparts)))
+                    individual_i = int(label_i / len(bodyparts))
+                    bodypart_i = int(label_i - (individual_i * len(bodyparts)))
                     self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = np.array([np.nan, np.nan])
-        # print(self.check_labels_in_frame())
-        self.update_image()
+                label_i = self.get_latest_label()
+                if label_i is not None:
+                    self.bodypart_selected_index = label_i + 1
+                else:
+                    self.bodypart_selected_index = 0
+                self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)
+            self.update_image()
 
     def setChildrenFocusPolicy(self, policy):
         def recursiveSetChildFocusPolicy(parentQWidget):
@@ -560,20 +680,36 @@ class MainWindow(QMainWindow):
         recursiveSetChildFocusPolicy(self)
 
     def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Delete:
+            if self.frame_number in self.labeled_frames.keys():
+                if self.config is not None:
+                    if not self.config['multianimalproject']:
+                        bodyparts = self.config['bodyparts']
+                        if not np.isnan(self.labeled_frames[self.frame_number][bodyparts[self.bodypart_selected_index]]).all():
+                            self.labeled_frames[self.frame_number][bodyparts[self.bodypart_selected_index]] = np.array([np.nan, np.nan])
+                            self.update_image()
+                    else:
+                        individuals = self.config['individuals']
+                        bodyparts = self.config['multianimalbodyparts']
+                        individual_i = int(self.bodypart_selected_index / len(bodyparts))
+                        bodypart_i = int(self.bodypart_selected_index - (individual_i * len(bodyparts)))
+                        if not np.isnan(self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]]).all():
+                            self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = np.array([np.nan, np.nan])
+                            self.update_image()
         if self.video_path is not None:
             modifiers = QApplication.keyboardModifiers()
-            state_change = False
+            frame_state_change = False
             if event.key() == Qt.Key_Left:
-                state_change = True
+                frame_state_change = True
                 self.frame_number -= 1
                 if (modifiers & Qt.ShiftModifier):
                     self.frame_number -= 4
             if event.key() == Qt.Key_Right:
-                state_change = True
+                frame_state_change = True
                 self.frame_number += 1
                 if (modifiers & Qt.ShiftModifier):
                     self.frame_number += 4
-            if state_change:
+            if frame_state_change:
                 self.frame_window_slider.setSliderPosition(self.frame_number)
                 self.update_frame_pos()
 
@@ -605,6 +741,31 @@ class MainWindow(QMainWindow):
             message_box.setWindowTitle(title)
         message_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         return message_box
+
+    def trigger_home_image(self):
+        self.label_image.home()
+        self.update_image()
+
+    def update_bodypart_selected(self, bodypart_selected_i):
+        self.bodypart_selected_index = bodypart_selected_i
+
+    def get_latest_label(self):
+        latest_label = None
+        if self.config is not None:
+            if not self.config['multianimalproject']:
+                all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
+            else:
+                all_coords = np.array([self.labeled_frames[self.frame_number][individual][bodypart] for individual, bodyparts in self.labeled_frames[self.frame_number].items() for bodypart in bodyparts]).astype(float)
+            if not np.isnan(all_coords).all():
+                if not np.isnan(all_coords).any():
+                    latest_label = len(all_coords) - 1
+                else:
+                    idxs = np.where(~np.isnan(all_coords).all(axis=1))[0]
+                    latest_label = idxs[-1]
+        return latest_label
+
+    def trigger_show_bodypart_label_window(self):
+        self.bodypart_label_window.show()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
