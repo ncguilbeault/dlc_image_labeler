@@ -544,7 +544,8 @@ class MainWindow(QMainWindow):
             scorer = self.config['scorer']
             if not self.config['multianimalproject']:
                 bodyparts = self.config['bodyparts']
-                for frame_key in self.labeled_frames.keys():
+                frame_keys = list(self.labeled_frames.keys())
+                for frame_key in frame_keys:
                     all_coords = np.array(list(self.labeled_frames[frame_key].values())).astype(float)
                     if np.isnan(all_coords).all():
                         del(self.labeled_frames[frame_key])
@@ -564,7 +565,8 @@ class MainWindow(QMainWindow):
             else:
                 bodyparts = self.config['multianimalbodyparts']
                 individuals = self.config['individuals']
-                for frame_key in self.labeled_frames.keys():
+                frame_keys = list(self.labeled_frames.keys())
+                for frame_key in frame_keys:
                     all_coords = np.array([self.labeled_frames[frame_key][individual][bodypart] for individual, bodyparts in self.labeled_frames[frame_key].items() for bodypart in bodyparts]).astype(float)
                     if np.isnan(all_coords).all():
                         del(self.labeled_frames[frame_key])
