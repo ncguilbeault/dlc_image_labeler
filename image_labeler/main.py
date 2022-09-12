@@ -107,6 +107,11 @@ class BodypartLabelWindow(QMainWindow):
         self.setCentralWidget(self.widget)
 
     def update_groupbox_with_bodyparts(self, bodyparts, colors, individuals = None):
+        if len(self.checkboxes) > 0:
+            for checkbox in self.checkboxes:
+                checkbox.deleteLater()
+                del(checkbox)
+            self.checkboxes = []            
         if individuals is None:
             for bodypart, color in zip(bodyparts, colors):
                 checkbox = QCheckBox(f"{bodypart}")
