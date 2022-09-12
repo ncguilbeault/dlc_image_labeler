@@ -281,25 +281,30 @@ class MainWindow(QMainWindow):
         self.remove_all_labels_action.triggered.connect(self.trigger_remove_all_labels)
         self.options_menu.addAction(self.remove_all_labels_action)
 
-        self.delete_last_label = QAction('&Delete Last Label', self)
-        self.delete_last_label.setShortcut('Ctrl+Z')
-        self.delete_last_label.triggered.connect(self.trigger_delete_last_label)
-        self.options_menu.addAction(self.delete_last_label)
+        self.delete_last_label_action = QAction('&Delete Last Label', self)
+        self.delete_last_label_action.setShortcut('Ctrl+Z')
+        self.delete_last_label_action.triggered.connect(self.trigger_delete_last_label)
+        self.options_menu.addAction(self.delete_last_label_action)
 
-        self.adjust_window_level = QAction('&Adjust Window Level', self)
-        self.adjust_window_level.setShortcut('Ctrl+A')
-        self.adjust_window_level.triggered.connect(self.trigger_show_window_level)
-        self.options_menu.addAction(self.adjust_window_level)
+        self.adjust_window_level_action = QAction('&Adjust Window Level', self)
+        self.adjust_window_level_action.setShortcut('Ctrl+A')
+        self.adjust_window_level_action.triggered.connect(self.trigger_show_window_level)
+        self.options_menu.addAction(self.adjust_window_level_action)
 
-        self.home_image = QAction('&Home Image', self)
-        self.home_image.setShortcut('Ctrl+H')
-        self.home_image.triggered.connect(self.trigger_home_image)
-        self.options_menu.addAction(self.home_image)
+        self.home_image_action = QAction('&Home Image', self)
+        self.home_image_action.setShortcut('Ctrl+H')
+        self.home_image_action.triggered.connect(self.trigger_home_image)
+        self.options_menu.addAction(self.home_image_action)
 
-        self.show_bodypart_label_window = QAction('&Show Bodypart Label Window', self)
-        self.show_bodypart_label_window.setShortcut('Ctrl+B')
-        self.show_bodypart_label_window.triggered.connect(self.trigger_show_bodypart_label_window)
-        self.options_menu.addAction(self.show_bodypart_label_window)
+        self.show_bodypart_label_window_action = QAction('&Show Bodypart Label Window', self)
+        self.show_bodypart_label_window_action.setShortcut('Ctrl+B')
+        self.show_bodypart_label_window_action.triggered.connect(self.trigger_show_bodypart_label_window)
+        self.options_menu.addAction(self.show_bodypart_label_window_action)
+
+        self.delete_selected_label_action = QAction('&Delete Bodypart Label', self)
+        self.delete_selected_label_action.setShortcut('Ctrl+B')
+        self.delete_selected_label_action.triggered.connect(self.trigger_delete_selected_bodypart_label)
+        self.options_menu.addAction(self.delete_selected_label_action)
 
     def trigger_open_video(self):
         self.labeled_frames = {}
@@ -681,21 +686,7 @@ class MainWindow(QMainWindow):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Delete:
-            if self.frame_number in self.labeled_frames.keys():
-                if self.config is not None:
-                    if not self.config['multianimalproject']:
-                        bodyparts = self.config['bodyparts']
-                        if not np.isnan(self.labeled_frames[self.frame_number][bodyparts[self.bodypart_selected_index]]).all():
-                            self.labeled_frames[self.frame_number][bodyparts[self.bodypart_selected_index]] = np.array([np.nan, np.nan])
-                            self.update_image()
-                    else:
-                        individuals = self.config['individuals']
-                        bodyparts = self.config['multianimalbodyparts']
-                        individual_i = int(self.bodypart_selected_index / len(bodyparts))
-                        bodypart_i = int(self.bodypart_selected_index - (individual_i * len(bodyparts)))
-                        if not np.isnan(self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]]).all():
-                            self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = np.array([np.nan, np.nan])
-                            self.update_image()
+            self.trigger_delete_selected_bodypart_label()
         if self.video_path is not None:
             modifiers = QApplication.keyboardModifiers()
             frame_state_change = False
@@ -766,6 +757,24 @@ class MainWindow(QMainWindow):
 
     def trigger_show_bodypart_label_window(self):
         self.bodypart_label_window.show()
+
+    def trigger_delete_selected_bodypart_label(self):
+        if self.frame_number in self.labeled_frames.keys():
+            if self.config is not None:
+                if not self.config['multianimalproject']:
+                    bodyparts = self.config['bodyparts']
+                    if not np.isnan(self.labeled_frames[self.frame_number][bodyparts[self.bodypart_selected_index]]).all():
+                        self.labeled_frames[self.frame_number][bodyparts[self.bodypart_selected_index]] = np.array([np.nan, np.nan])
+                        self.update_image()
+                else:
+                    individuals = self.config['individuals']
+                    bodyparts = self.config['multianimalbodyparts']
+                    individual_i = int(self.bodypart_selected_index / len(bodyparts))
+                    bodypart_i = int(self.bodypart_selected_index - (individual_i * len(bodyparts)))
+                    if not np.isnan(self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]]).all():
+                        self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = np.array([np.nan, np.nan])
+                        self.update_image()
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
