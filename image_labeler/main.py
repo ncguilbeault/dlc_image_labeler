@@ -52,7 +52,7 @@ class WindowLevelAdjuster(QMainWindow):
     def __init__(self, image, parent=None):
         super(WindowLevelAdjuster, self).__init__(parent)
         self.setWindowTitle("Window Level Adjustment")
-        self.image = image.astype(np.float64).swapaxes(0, 1)
+        self.image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.float64).swapaxes(0, 1)
         self.image_view = pg.image(self.image, autoRange=True)
         self.image_view.getHistogramWidget().sigLevelsChanged.connect(self.sig_levels_changed)
         self.image_view.setLevels(0, 255)
@@ -74,7 +74,7 @@ class WindowLevelAdjuster(QMainWindow):
         self.image_view.update()
 
     def get_processed_image(self, image):
-        self.image = image.astype(np.float64).swapaxes(0, 1)
+        self.image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.float64).swapaxes(0, 1)
         hist = self.image_view.getHistogramWidget()
         hist.disableAutoHistogramRange()
         self.image_view.setImage(self.image, autoRange=True, autoLevels=False)
@@ -97,9 +97,12 @@ class BodypartLabelWindow(QMainWindow):
         self.groupbox = QGroupBox(self)
         self.vertical_layout = QVBoxLayout()
         self.groupbox.setLayout(self.vertical_layout)
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidget(self.groupbox)
+        self.scroll_area.setWidgetResizable(True)
         self.widget = QWidget()
         self.layout = QGridLayout()
-        self.layout.addWidget(self.groupbox, 0, 0)
+        self.layout.addWidget(self.scroll_area, 0, 0)
         self.widget.setLayout(self.layout)
         self.setCentralWidget(self.widget)
 
@@ -162,9 +165,10 @@ class BodypartLabelWindow(QMainWindow):
                     self.update_bodypart_selected.emit(i)
 
     def set_bodypart_checked(self, index):
-        checkbox = self.checkboxes[index]
-        checkbox.setChecked(True)
-        self.check_bodypart_selection(sender = checkbox)
+        if index < len(self.checkboxes):
+            checkbox = self.checkboxes[index]
+            checkbox.setChecked(True)
+            self.check_bodypart_selection(sender = checkbox)
 
     def keyPressEvent(self, event):
         return self.parent().keyPressEvent(event)
@@ -179,7 +183,6 @@ class MainWindow(QMainWindow):
     def initUI(self):
         self.setWindowTitle("DLC Image Labeler")
         self.resize(800, 800)
-        self.window_level_adjuster = None
 
         self.main_widget = QWidget()
         self.setCentralWidget(self.main_widget)
@@ -207,13 +210,13 @@ class MainWindow(QMainWindow):
 
         self.label_image = ImageLabel(self)
         self.image = cv2.imread('test.png', cv2.IMREAD_REDUCED_COLOR_8).astype(np.uint8)
-        self.update_image()
         self.scale = 1
         self.offset = np.array([0, 0], dtype = np.float64)
         self.prev_pos = None
 
         self.window_level_adjuster = WindowLevelAdjuster(self.image, self)
         self.window_level_adjuster.update_window_level.connect(self.update_window_level)
+        self.update_image()
 
         self.bodypart_label_window = BodypartLabelWindow(self)
         self.bodypart_label_window.update_bodypart_selected.connect(self.update_bodypart_selected)
@@ -347,7 +350,7 @@ class MainWindow(QMainWindow):
         image = self.image.copy()
 
         image = self.adjust_image_with_window_level(image)
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
         if self.config is not None and self.check_labels_in_frame():
             if not self.config['multianimalproject']:
@@ -422,6 +425,8 @@ class MainWindow(QMainWindow):
 
                 if self.bodypart_selected_index < len(bodyparts) - 1:
                     self.bodypart_selected_index += 1
+                else:
+                    self.bodypart_selected_index = self.get_next_label()
                 
                 self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)
                 
@@ -438,8 +443,10 @@ class MainWindow(QMainWindow):
                 bodypart_i = int(self.bodypart_selected_index - (individual_i * len(bodyparts)))
                 self.labeled_frames[self.frame_number][individuals[individual_i]][bodyparts[bodypart_i]] = coords
 
-                if self.bodypart_selected_index < len(bodyparts) - 1:
+                if self.bodypart_selected_index < (len(bodyparts) * len(individuals)) - 1:
                     self.bodypart_selected_index += 1
+                else:
+                    self.bodypart_selected_index = self.get_next_label()
 
                 self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)               
 
@@ -743,7 +750,7 @@ class MainWindow(QMainWindow):
 
     def get_latest_label(self):
         latest_label = None
-        if self.config is not None:
+        if self.config is not None and self.frame_number in self.labeled_frames.keys():
             if not self.config['multianimalproject']:
                 all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
             else:
@@ -758,7 +765,7 @@ class MainWindow(QMainWindow):
 
     def get_next_label(self):
         next_label = 0
-        if self.config is not None:
+        if self.config is not None and self.frame_number in self.labeled_frames.keys():
             if not self.config['multianimalproject']:
                 all_coords = np.array(list(self.labeled_frames[self.frame_number].values())).astype(float)
             else:
