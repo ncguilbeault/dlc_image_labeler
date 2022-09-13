@@ -572,6 +572,7 @@ class MainWindow(QMainWindow):
                         del(self.labeled_frames[frame_key])
                 if len(self.labeled_frames.items()) == 0:
                     return
+                zero_pad_image_name = len(str(max(list(self.labeled_frames.keys()))))
                 columns = pd.MultiIndex.from_product([[scorer], individuals, bodyparts, ["x", "y"],], names=["scorer", "individuals", "bodyparts", "coords",],)
                 idx = pd.MultiIndex.from_tuples([("labeled-data", video_stem, f"img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png") for labeled_frame_key in self.labeled_frames.keys()])
                 data = np.array([np.array([self.labeled_frames[frame_key][individual][bodypart] - np.array([x_offset, y_offset]) for individual in individuals for bodypart in bodyparts]).ravel() for frame_key in self.labeled_frames.keys()], dtype=float)
