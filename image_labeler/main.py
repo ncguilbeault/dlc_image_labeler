@@ -10,6 +10,7 @@ import matplotlib.colors as clrs
 from pathlib import Path
 import csv
 import pandas as pd
+import os
 
 class ImageLabel(QWidget):
     def __init__(self, parent = None):
@@ -590,7 +591,7 @@ class MainWindow(QMainWindow):
                 df = pd.DataFrame(data, index = idx, columns = columns)
                 df.sort_index(inplace = True)
                 df.reindex(bodyparts, axis = 1, level = df.columns.names.index('bodyparts'))
-                csv_path = f'{self.save_directory}\\CollectedData_{scorer}.csv'
+                csv_path = os.path.join(self.save_directory, f'CollectedData_{scorer}.csv')
                 df.to_csv(csv_path)
                 hdf_path = csv_path.split('.csv')[0] + '.h5'
                 df.to_hdf(hdf_path, "df_with_missing")
@@ -611,14 +612,14 @@ class MainWindow(QMainWindow):
                 df = pd.DataFrame(data, index = idx, columns = columns)
                 df.sort_index(inplace = True)
                 df.reindex(bodyparts, axis = 1, level = df.columns.names.index('bodyparts'))
-                csv_path = f'{self.save_directory}\\CollectedData_{scorer}.csv'
+                csv_path = os.path.join(self.save_directory, f'CollectedData_{scorer}.csv')
                 df.to_csv(csv_path)
                 hdf_path = csv_path.split('.csv')[0] + '.h5'
                 df.to_hdf(hdf_path, "df_with_missing")
             for labeled_frame_key in self.labeled_frames:
                 success, frame = get_video_frame(self.video_path, labeled_frame_key, False)
                 if success:
-                    image_path = f'{self.save_directory}\\img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png'
+                    image_path = os.path.join(self.save_directory, f'img{str(labeled_frame_key).zfill(zero_pad_image_name)}.png')
                     cv2.imwrite(image_path, frame[y_offset:crop_height, x_offset:crop_width])
             print(f'Saved labels: {csv_path} {hdf_path}')
         else:
