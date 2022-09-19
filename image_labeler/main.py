@@ -235,13 +235,28 @@ class MainWindow(QMainWindow):
         self.frame_window_slider.sliderMoved.connect(self.update_frame_pos)
         self.video_path = None
 
-        self.frame_number_label = QLabel(self)
-        self.frame_number_label.setFixedSize(self.menubar.width(), int(self.height()/20))
-        self.frame_number_label.setText("Frame number: 0")
+        self.hbox_widget = QWidget()
+        self.hbox_layout = QHBoxLayout()
+        self.hbox_widget.setLayout(self.hbox_layout)
 
-        self.main_layout.addWidget(self.label_image, 0, 0, 1, 0)
-        self.main_layout.addWidget(self.frame_window_slider, 1, 0, 1, 0)
-        self.main_layout.addWidget(self.frame_number_label, 2, 0, 1, 0)
+        self.frame_number_label = QLabel()
+        self.frame_number_label.setAlignment(Qt.AlignCenter)
+        self.frame_number_label.setText("Frame number: 0")
+        self.hbox_layout.addWidget(self.frame_number_label, Qt.AlignmentFlag.AlignCenter)
+
+        self.prev_frame_labeled_label = QLabel()
+        self.prev_frame_labeled_label.setAlignment(Qt.AlignCenter)
+        self.prev_frame_labeled_label.setText("Prev labeled frame: None")
+        self.hbox_layout.addWidget(self.prev_frame_labeled_label, Qt.AlignmentFlag.AlignCenter)
+
+        self.next_frame_labeled_label = QLabel()
+        self.next_frame_labeled_label.setAlignment(Qt.AlignCenter)
+        self.next_frame_labeled_label.setText("Next labeled frame: None")
+        self.hbox_layout.addWidget(self.next_frame_labeled_label, Qt.AlignmentFlag.AlignCenter)
+
+        self.main_layout.addWidget(self.label_image, 0, 0, 11, 0)
+        self.main_layout.addWidget(self.frame_window_slider, 12, 0, 1, 0)
+        self.main_layout.addWidget(self.hbox_widget, 13, 0, 1, 0)
 
         self.setChildrenFocusPolicy(Qt.NoFocus)
         self.show()
@@ -335,7 +350,24 @@ class MainWindow(QMainWindow):
         if self.video_path is not None:
             self.frame_number = int(self.frame_window_slider.sliderPosition())
             self.frame_number_label.setText(f"Frame number: {self.frame_number}")
-            # self.bodypart_selected_index = 0
+            prev_labeled_frame = None
+            next_labeled_frame = None
+            if len(self.labeled_frames.keys()) > 0:
+                all_labeled_frames = sorted([int(frame) for frame in self.labeled_frames.keys()])
+                diff_labeled_frames = np.array([np.abs(self.frame_number - frame) for frame in all_labeled_frames])
+                frame_idx = diff_labeled_frames.argmin() + 1
+                all_labeled_frames = [None] + all_labeled_frames + [None]
+                if all_labeled_frames[frame_idx] == self.frame_number:
+                    prev_labeled_frame = all_labeled_frames[frame_idx - 1]
+                    next_labeled_frame = all_labeled_frames[frame_idx + 1]
+                elif all_labeled_frames[frame_idx] > self.frame_number:
+                    prev_labeled_frame = all_labeled_frames[frame_idx - 1]
+                    next_labeled_frame = all_labeled_frames[frame_idx]
+                else:
+                    prev_labeled_frame = all_labeled_frames[frame_idx]
+                    next_labeled_frame = all_labeled_frames[frame_idx + 1]
+            self.prev_frame_labeled_label.setText(f"Prev labeled frame: {prev_labeled_frame}")
+            self.next_frame_labeled_label.setText(f"Next labeled frame: {next_labeled_frame}")
             self.bodypart_selected_index = self.get_next_label()
             self.bodypart_label_window.set_bodypart_checked(self.bodypart_selected_index)
             success, self.image = get_video_frame(self.video_path, self.frame_number, False)
