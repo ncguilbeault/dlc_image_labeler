@@ -34,11 +34,12 @@ class ImageLabel(QWidget):
         height = self.height()
         imageWidth = self.image.width()
         imageHeight = self.image.height()
+        # print(width, height, imageWidth, imageHeight)
         self.r_width = width / imageWidth
         self.r_height = height / imageHeight
         self.r = min(self.r_width, self.r_height)
-        self.x = (width + self.offset[0] / self.scale * self.r - imageWidth * self.r) / 2
-        self.y = (height + self.offset[1] / self.scale * self.r - imageHeight * self.r) / 2
+        self.x = ((width - (self.r * imageWidth)) / 2) + self.offset[0]
+        self.y = ((height - (self.r * imageHeight)) / 2) + self.offset[1]
         painter.setTransform(QTransform().translate(self.x, self.y).scale(self.r * self.scale, self.r * self.scale))
         painter.drawImage(QPointF(0,0), self.image)
 
@@ -53,7 +54,7 @@ class WindowLevelAdjuster(QMainWindow):
     def __init__(self, image, parent=None):
         super(WindowLevelAdjuster, self).__init__(parent)
         self.setWindowTitle("Window Level Adjustment")
-        self.image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.float64).swapaxes(0, 1)
+        self.image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(float).swapaxes(0, 1)
         self.image_view = pg.image(self.image, autoRange=True)
         self.image_view.getHistogramWidget().sigLevelsChanged.connect(self.sig_levels_changed)
         self.image_view.setLevels(0, 255)
@@ -75,7 +76,7 @@ class WindowLevelAdjuster(QMainWindow):
         self.image_view.update()
 
     def get_processed_image(self, image):
-        self.image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(np.float64).swapaxes(0, 1)
+        self.image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR).astype(float).swapaxes(0, 1)
         hist = self.image_view.getHistogramWidget()
         hist.disableAutoHistogramRange()
         self.image_view.setImage(self.image, autoRange=True, autoLevels=False)
@@ -217,7 +218,7 @@ class MainWindow(QMainWindow):
         self.label_image = ImageLabel(self)
         self.image = cv2.imread('test.png', cv2.IMREAD_REDUCED_COLOR_8).astype(np.uint8)
         self.scale = 1
-        self.offset = np.array([0, 0], dtype = np.float64)
+        self.offset = np.array([0, 0], dtype = float)
         self.prev_pos = None
 
         self.window_level_adjuster = WindowLevelAdjuster(self.image, self)
@@ -316,7 +317,7 @@ class MainWindow(QMainWindow):
         self.options_menu.addAction(self.adjust_window_level_action)
 
         self.home_image_action = QAction('&Home Image', self)
-        self.home_image_action.setShortcut('Ctrl+H')
+        self.home_image_action.setShortcut('/')
         self.home_image_action.triggered.connect(self.trigger_home_image)
         self.options_menu.addAction(self.home_image_action)
 
@@ -380,7 +381,19 @@ class MainWindow(QMainWindow):
         delta = event.angleDelta().y()
         prev_scale = self.scale
         self.scale *= 1.001 ** delta
-        delta_scale = self.scale - prev_scale
+
+        x = (event.pos().x() - self.offset[0]) / (self.label_image.image.width() * self.label_image.r * prev_scale)
+        prev_image_width = self.label_image.r * prev_scale * self.label_image.image.width()
+        new_image_width = self.label_image.r * self.scale * self.label_image.image.width()
+        delta_image_width = (prev_image_width - new_image_width) * x
+
+        y = (event.pos().y() - self.offset[1] - self.menubar.height()) / (self.label_image.image.height() * self.label_image.r * prev_scale)
+        prev_image_height = self.label_image.r * prev_scale * self.label_image.image.height()
+        new_image_height = self.label_image.r * self.scale * self.label_image.image.height()
+        delta_image_height = (prev_image_height - new_image_height) * y
+
+        self.offset += (delta_image_width, delta_image_height) 
+
         self.label_image.update_params(offset = self.offset, scale = self.scale)
         self.update()
 
@@ -428,7 +441,7 @@ class MainWindow(QMainWindow):
 
         if event.button() == Qt.LeftButton:
             if self.prev_pos is None:
-                self.prev_pos = (event.x(), event.y())
+                self.prev_pos = (event.x() - self.offset[0], event.y() - self.offset[1])
 
         if event.button() == Qt.RightButton:
             if self.config is None:
@@ -510,10 +523,8 @@ class MainWindow(QMainWindow):
 
         if event.buttons() == Qt.LeftButton:
             if self.prev_pos is not None:
-                delta_pos = ((event.x() - self.prev_pos[0]) / self.width(), (event.y() - self.prev_pos[1]) / self.height())
-                self.prev_pos = (event.x(), event.y())
-                self.offset += (delta_pos[0] * self.width() * self.scale / self.label_image.r_width, delta_pos[1] * self.height() * self.scale / self.label_image.r_height)
-
+                delta_pos = ((event.x() - self.prev_pos[0]), (event.y() - self.prev_pos[1]))
+                self.offset = np.array([delta_pos[0], delta_pos[1]]).astype(float)
             self.label_image.update_params(offset = self.offset, scale = self.scale)
             self.update()
 
@@ -796,6 +807,8 @@ class MainWindow(QMainWindow):
 
     def trigger_home_image(self):
         self.label_image.home()
+        self.scale = 1
+        self.offset = np.array([0, 0], dtype = float)
         self.update_image()
 
     def update_bodypart_selected(self, bodypart_selected_i):
