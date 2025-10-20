@@ -2,12 +2,14 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import pyqtgraph as pg
+import os
+from pathlib import Path
 
 import sys
 from utils import *
 import matplotlib.pyplot as plt
 import matplotlib.colors as clrs
-from pathlib import Path
+
 import csv
 import pandas as pd
 import os
@@ -333,7 +335,8 @@ class MainWindow(QMainWindow):
 
     def trigger_open_video(self):
         self.labeled_frames = {}
-        self.video_path = QFileDialog.getOpenFileName(self,"Open Video File", "","Video Files (*.avi; *.mp4; *.mov)", options=QFileDialog.Options())[0]
+        # self.video_path = QFileDialog.getOpenFileName(self,"Open Video File", "","Video Files (*.avi; *.mp4; *.mov)", options=QFileDialog.Options())[0]
+        self.video_path = QFileDialog.getOpenFileName(self,"Open Video File", "", options=QFileDialog.Options())[0]
         if self.video_path != '':
             print(f'Selected video: {self.video_path}')
             success, self.image = get_video_frame(self.video_path, 0, False)
