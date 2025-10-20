@@ -1,4 +1,4 @@
-# DeepLabCut (DLC) Image Labeller
+# DeepLabCut (DLC) Image Labeler
 
 This is a custom python application for manually labelling keypoints in video for DeepLabCut (DLC). I built this to have some nice features that I wanted while manually annotating videos for the DLC.
 
@@ -17,4 +17,10 @@ To install, run the following commands:
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+To run, use the following:
+
+```python
+python image_labeler\main.py
 ```
